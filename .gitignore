@@ -1,0 +1,6 @@
+sample.xlsx
+*_filled_*.xlsx
+*.xlsx.tmp
+node_modules/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "ServiceNow Ticket Analyzer",
+  "version": "0.1.0",
+  "description": "Pull ServiceNow tickets via REST API, extract queue timelines (assign/ackn/suspend/resume), export Excel analysis.",
+  "permissions": ["storage", "unlimitedStorage", "downloads", "sidePanel", "cookies", "scripting"],
+  "host_permissions": ["https://*.service-now.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ServiceNow Ticket Analyzer"
+  },
+  "options_ui": {
+    "page": "settings/settings.html",
+    "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "panel/panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.service-now.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

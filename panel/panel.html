@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <h1>ServiceNow Ticket Analyzer</h1>
+    <span id="connState" class="badge">Not connected</span>
+  </header>
+
+  <section class="card">
+    <label>Instance URL</label>
+    <div class="row">
+      <input id="instance" type="url" placeholder="https://yourcompany.service-now.com">
+      <button id="connectBtn">Connect</button>
+      <button id="settingsBtn" type="button" class="linklike" title="Open settings">&#9881; Settings</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Filters</h2>
+
+    <div id="filterListCard" class="hidden">
+      <label>Saved filter sets (Run pulls all of them)</label>
+      <div id="filterListBox"></div>
+      <button id="clearFilterListBtn" type="button" class="linklike">Clear all — run uses the live filters only</button>
+    </div>
+
+    <label>Ticket type</label>
+    <select id="ticketType">
+      <option value="incident">Incident</option>
+      <option value="change_request">Change Request</option>
+      <option value="problem">Problem</option>
+      <option value="sc_req_item">Requested Item (RITM)</option>
+      <option value="sc_task">Catalog Task (SCTASK)</option>
+    </select>
+
+    <label>Conditions (AND / OR)</label>
+    <div id="condRows"></div>
+    <button id="addCondBtn" type="button" class="linklike">+ Add condition</button>
+
+    <label class="inline"><input type="checkbox" id="onlyMyQueue"> Only tickets currently in my queue</label>
+
+    <button id="addFilterBtn" type="button" class="wide">+ Add to filter list</button>
+
+    <details id="advancedBox">
+      <summary>Advanced — raw query override / generated query</summary>
+      <textarea id="rawQuery" placeholder="Optional: extra encoded query conditions, e.g. priority=1^category=network"></textarea>
+      <label>Generated query</label>
+      <pre id="generatedQuery" class="mono"></pre>
+    </details>
+  </section>
+
+  <section class="actions">
+    <button id="previewBtn">Preview</button>
+    <button id="runBtn" class="primary">Run</button>
+  </section>
+  <section class="actions">
+    <button id="viewBtn" class="wide">Open data view</button>
+  </section>
+
+  <section id="progressWrap" class="hidden">
+    <div class="bar"><div id="fill"></div></div>
+    <div id="stageLabel"></div>
+  </section>
+
+  <section class="card log-card hidden" id="logCard">
+    <h2 id="logHead" title="Click to open full log">Log <span id="logErrBadge" class="hidden"></span></h2>
+    <div id="log"></div>
+  </section>
+
+  <div id="logModal" class="hidden">
+    <div class="log-box">
+      <div class="log-head">
+        <span>Request &amp; activity log</span>
+        <button id="logCopy" type="button" class="linklike">Copy all</button>
+        <button id="logClose" type="button" title="Close">&#10005;</button>
+      </div>
+      <div id="logMirror"></div>
+    </div>
+  </div>
+
+  <footer id="lastRun"></footer>
+
+  <script src="../lib/querybuilder.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>
