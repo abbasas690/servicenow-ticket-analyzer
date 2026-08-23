@@ -497,9 +497,24 @@ function buildHead() {
   const thead = table.tHead;
   thead.innerHTML = "";
   const tr = document.createElement("tr");
-  for (const [key, label] of COLUMNS) {
+  for (const [key, label, cls] of COLUMNS) {
     const th = document.createElement("th");
     th.textContent = label;
+    const cc = document.createElement("span");
+    cc.className = "colCopy";
+    cc.textContent = "📋";
+    cc.title = "Copy entire column";
+    cc.addEventListener("click", e => {
+      e.stopPropagation();
+      const vals = currentRows()
+        .map(r => cellValue(r, key, cls))
+        .filter(v => v !== "");
+      if (!vals.length) return;
+      copyText(vals.join("\n"))
+        .then(() => setStatus(`Copied ${vals.length} value(s) from "${label}"`))
+        .catch(err => setStatus(`Copy failed: ${err.message}`, true));
+    });
+    th.appendChild(cc);
     if (key === sortKey) th.classList.add("sorted", ...(sortDir === -1 ? ["desc"] : []));
     th.addEventListener("click", () => {
       if (sortKey === key) sortDir = -sortDir;
