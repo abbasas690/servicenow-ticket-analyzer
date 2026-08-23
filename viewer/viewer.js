@@ -404,6 +404,7 @@ function load(d) {
   snOffsetMs = typeof detectSnOffsetMs === "function" && data
     ? detectSnOffsetMs(data.rows)
     : (self.Workbook?.detectSnOffsetMs?.(data?.rows) || 0);
+  if (autoParse()) persistEdits();
   if (!data || !data.rows.length) {
     $("wrap").classList.add("hidden");
     document.querySelector(".toolbar").classList.add("hidden");
@@ -633,35 +634,17 @@ $("tbl").tBodies[0].addEventListener("dblclick", e => {
 
 $("search").addEventListener("input", render);
 
-async function runExtract(rerun) {
-  if (activeFinish) activeFinish(true);
-  const targets = data.rows.filter(r =>
-    (r.closeNotes || "").trim() &&
-    (rerun || !(r.solutionType || r.rootCause)));
-  if (!targets.length) {
-    setStatus(data.rows.some(r => (r.closeNotes || "").trim())
-      ? "All closure notes already analyzed — use Shift+click to re-run"
-      : "No tickets have resolution notes to analyze");
-    return;
-  }
-  const log = detail =>
-    chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
-  const t0 = Date.now();
-  let done = 0;
-  for (const row of targets) {
+function autoParse() {
+  let filled = 0;
+  for (const row of data.rows) {
+    if (!(row.closeNotes || "").trim()) continue;
+    if (row.solutionType && row.rootCause) continue;
     const h = AiExtract.extractHeuristic(row.closeNotes);
     if (h.solutionType || h.rootCause) {
-      row.solutionType = h.solutionType;
-      row.rootCause = h.rootCause;
-      done++;
-      await log(`${done}/${targets.length} ${row.number}: ${h.solutionType || "?"} · ${(h.rootCause || "no root cause found").slice(0, 80)}`);
+      row.solutionType = row.solutionType || h.solutionType;
+      row.rootCause = row.rootCause || h.rootCause;
+      filled++;
     }
   }
-  render();
-  await persistEdits();
-  const secs = Math.round((Date.now() - t0) / 1000);
-  setStatus(`Extract done — ${done} of ${targets.length} ticket(s) filled from closure notes`);
-  await log(`Extract finished · ${done}/${targets.length} ticket(s) filled in ${secs}s`);
+  return filled;
 }
-
-$("extractBtn").addEventListener("click", e => runExtract(e.shiftKey).catch(err => setStatus(err.message, true)));
