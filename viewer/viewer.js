@@ -662,8 +662,11 @@ function scheduleAiIdleRelease() {
 }
 
 function setAiChip(text) {
-  $("aiChipText").textContent = text;
-  setStatus(text);
+  const el = $("aiChipText");
+  if (el.textContent !== text) {
+    el.textContent = text;
+    setStatus(text);
+  }
 }
 
 async function runAiExtract(rerun) {

@@ -71,6 +71,7 @@ function createAiPool(size) {
     busy: false
   }));
   const waiters = [];
+  let poolModelId = "";
 
   function acquire() {
     return new Promise((resolve, reject) => {
@@ -101,20 +102,24 @@ function createAiPool(size) {
     },
     async ensure(modelId, onProgress) {
       let device = "";
-      await Promise.all(slots.map(async (s, i) => {
+      const loadSlot = async (s, prog) => {
         s.busy = true;
         try {
-          const r = await s.client.ensure(modelId, i === 0 ? onProgress : undefined);
+          const r = await s.client.ensure(modelId, prog);
           if (!device) device = r.device || "";
         } finally {
           release(s);
         }
-      }));
+      };
+      poolModelId = modelId;
+      await loadSlot(slots[0], onProgress);
+      await Promise.all(slots.slice(1).map(s => loadSlot(s)));
       return { device };
     },
     extract(notes) {
       return acquire().then(async s => {
         try {
+          if (poolModelId) await s.client.ensure(poolModelId);
           return await s.client.extract(notes);
         } finally {
           release(s);
