@@ -142,6 +142,10 @@ function makeClient(instanceUrl) {  const client = new ServiceNowClient(instance
           progress("diag", `${d.path || "audit"} ⚠ ${d.note}`);
           return;
         }
+        if (d.rateLimited) {
+          progress("diag", `⚠ RATE LIMITED — ServiceNow is throttling requests; auto-retrying (${d.attempt}/${4}). If this repeats, reduce tickets per run or ask your admin about rate-limit rules.`);
+          return;
+        }
         const why = d.netError ? `network: ${d.netError}` : `server ${d.status}`;
         progress("diag", `${d.path} ✕ ${why} · retrying (${d.attempt}/${4})${ms} · q=${d.query || ""}`);
         return;

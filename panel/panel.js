@@ -614,7 +614,7 @@ chrome.runtime.onMessage.addListener(msg => {
   const { stage, detail } = msg;
 
   if (stage === "diag") {
-    const isProblem = /401|403|MISSING/.test(detail);
+    const isProblem = /401|403|429|MISSING|RATE LIMITED/.test(detail);
     log(detail, isProblem ? "error" : "");
     return;
   }
