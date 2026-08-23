@@ -65,5 +65,4 @@ function createAiClient() {
   };
 }
 
-const G = typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : null;
-if (G) G.AiClient = { createAiClient };
+(globalThis ?? self).AiClient = { createAiClient };
