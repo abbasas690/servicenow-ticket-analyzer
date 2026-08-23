@@ -650,22 +650,30 @@ async function runAiExtract(rerun) {
   const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
   const modelId = pluginSettings?.ai?.modelId;
   if (!modelId) throw new Error("No AI model selected — open Settings and download one");
+  const aiLog = detail =>
+    chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
   aiRunning = true;
   const ai = AiClient.createAiClient();
+  const t0 = Date.now();
+  let done = 0;
   try {
     await ai.ensure(modelId, p => setStatus(`AI download: ${p.file} ${p.percent}%`));
-    let done = 0;
+    await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · ${targets.length} ticket(s)`);
     for (const row of targets) {
-      setStatus(`AI analyzing ${++done}/${targets.length}: ${row.number} (page stays responsive)`);
+      setStatus(`AI analyzing ${++done}/${targets.length}: ${row.number}`);
       const res = await ai.extract(row.closeNotes);
       row.solutionType = res.solutionType;
       row.rootCause = res.rootCause;
       render();
       await persistEdits();
+      await aiLog(`AI ${done}/${targets.length} ${row.number}: ${res.solutionType || "unclassified"}${res.rootCause ? ` · ${res.rootCause.slice(0, 80)}` : ""}`);
     }
+    const secs = Math.round((Date.now() - t0) / 1000);
     setStatus(`AI done — ${targets.length} ticket(s) analyzed`);
+    await aiLog(`AI extract finished · ${targets.length} ticket(s) in ${secs}s`);
   } catch (err) {
     setStatus(`AI failed: ${err.message}`, true);
+    await aiLog(`AI extract failed after ${done}/${targets.length}: ${err.message}`);
   } finally {
     ai.dispose();
     aiRunning = false;
