@@ -586,23 +586,27 @@ $("viewBtn").addEventListener("click", () => {
   openViewer();
 });
 
+let viewerTabId = null;
+
+chrome.tabs.onRemoved.addListener(tabId => {
+  if (tabId === viewerTabId) viewerTabId = null;
+});
+
 async function openViewer() {
   const url = chrome.runtime.getURL("viewer/viewer.html");
-  let tabs = [];
-  try {
-    tabs = await chrome.tabs.query({});
-  } catch {}
-  const viewTabs = tabs.filter(t => (t.url || "").startsWith(url));
-  if (viewTabs.length) {
-    const tab = viewTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+  if (viewerTabId !== null) {
     try {
+      const tab = await chrome.tabs.get(viewerTabId);
       await chrome.tabs.update(tab.id, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
-    } catch {}
-    chrome.runtime.sendMessage({ type: "DATA_UPDATED" }).catch(() => {});
-    return;
+      chrome.runtime.sendMessage({ type: "DATA_UPDATED" }).catch(() => {});
+      return;
+    } catch {
+      viewerTabId = null;
+    }
   }
-  chrome.tabs.create({ url });
+  const tab = await chrome.tabs.create({ url });
+  viewerTabId = tab.id;
 }
 
 const STAGE_PCT = { resolve: 8, count: 15, phase1: null, phase2: null, analyze: 92 };
