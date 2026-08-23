@@ -633,44 +633,7 @@ $("tbl").tBodies[0].addEventListener("dblclick", e => {
 
 $("search").addEventListener("input", render);
 
-let aiRunning = false;
-let aiActive = null;
-let aiStopped = false;
-let aiWarm = null;
-let aiWarmModel = "";
-let aiWarmTimer = null;
-
-function getAi(modelId) {
-  clearTimeout(aiWarmTimer);
-  if (!aiWarm || aiWarmModel !== modelId) {
-    aiWarm?.dispose();
-    const cores = navigator.hardwareConcurrency || 4;
-    const size = Math.max(1, Math.min(3, Math.floor((cores - 1) / 2)));
-    aiWarm = AiClient.createAiPool(size);
-    aiWarmModel = modelId;
-  }
-  return aiWarm;
-}
-
-function scheduleAiIdleRelease() {
-  clearTimeout(aiWarmTimer);
-  aiWarmTimer = setTimeout(() => {
-    aiWarm?.dispose();
-    aiWarm = null;
-    aiWarmModel = "";
-  }, 120000);
-}
-
-function setAiChip(text) {
-  const el = $("aiChipText");
-  if (el.textContent !== text) {
-    el.textContent = text;
-    setStatus(text);
-  }
-}
-
-async function runAiExtract(rerun) {
-  if (aiRunning) { setStatus("AI analysis already running — use the Stop button to cancel", true); return; }
+async function runExtract(rerun) {
   if (activeFinish) activeFinish(true);
   const targets = data.rows.filter(r =>
     (r.closeNotes || "").trim() &&
@@ -681,90 +644,24 @@ async function runAiExtract(rerun) {
       : "No tickets have resolution notes to analyze");
     return;
   }
-  aiRunning = true;
-  aiStopped = false;
-  $("aiChip").classList.remove("hidden");
+  const log = detail =>
+    chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
+  const t0 = Date.now();
   let done = 0;
-  try {
-    const aiLog = detail =>
-      chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
-    const t0 = Date.now();
-
-    const pendingAI = [];
-    for (const row of targets) {
-      const h = AiExtract.extractHeuristic(row.closeNotes);
-      if (h.solutionType && h.rootCause) {
-        row.solutionType = h.solutionType;
-        row.rootCause = h.rootCause;
-        done++;
-        await aiLog(`AI ${done}/${targets.length} ${row.number}: ${h.solutionType} · ${h.rootCause.slice(0, 80)} · regex`);
-      } else {
-        pendingAI.push({ row, h });
-      }
-    }
-    render();
-
-    if (!pendingAI.length) {
-      setStatus(`${targets.length} ticket(s) resolved by regex — no model needed`);
-      await aiLog(`AI extract finished · ${targets.length} ticket(s) by regex in ${Math.round((Date.now() - t0) / 1000)}s · no model used`);
-      return;
-    }
-
-    const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
-    const modelId = pluginSettings?.ai?.modelId;
-    if (!modelId) {
-      if (done) setStatus(`${done} ticket(s) filled by regex — remaining need an AI model (open Settings)`, true);
-      throw new Error("No AI model selected — open Settings and download one");
-    }
-    const regexCount = done;
-    const ai = getAi(modelId);
-    aiActive = ai;
-    setAiChip(`AI: loading model (${ai.size} worker${ai.size > 1 ? "s" : ""})…`);
-    const ready = await ai.ensure(modelId, p => setAiChip(`AI download: ${p.file} ${p.percent}%`));
-    setAiChip(`AI: ready (${(ready.device || "?").toUpperCase()} × ${ai.size})`);
-    await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · device=${ready.device || "?"} · workers=${ai.size} · ${pendingAI.length} ticket(s) via model (${regexCount} already by regex)`);
-    await ai.map(pendingAI, async ({ row, h }) => {
-      if (aiStopped) return;
-      const res = await ai.extract(row.closeNotes);
-      row.solutionType = res.solutionType || h.solutionType || "";
-      row.rootCause = res.rootCause || h.rootCause || "";
+  for (const row of targets) {
+    const h = AiExtract.extractHeuristic(row.closeNotes);
+    if (h.solutionType || h.rootCause) {
+      row.solutionType = h.solutionType;
+      row.rootCause = h.rootCause;
       done++;
-      setAiChip(`AI analyzing ${done}/${targets.length}: ${row.number}`);
-      render();
-      await aiLog(`AI ${done}/${targets.length} ${row.number}: ${row.solutionType || "unclassified"}${row.rootCause ? ` · ${row.rootCause.slice(0, 80)}` : ""}`);
-    });
-    const secs = Math.round((Date.now() - t0) / 1000);
-    if (aiStopped) {
-      setStatus(`AI stopped — ${done} of ${targets.length} ticket(s) analyzed; results kept`);
-      await aiLog(`AI extract stopped by user after ${done}/${targets.length} ticket(s)`);
-    } else {
-      setStatus(`AI done — ${targets.length} ticket(s) analyzed`);
-      await aiLog(`AI extract finished · ${targets.length} ticket(s) in ${secs}s`);
+      await log(`${done}/${targets.length} ${row.number}: ${h.solutionType || "?"} · ${(h.rootCause || "no root cause found").slice(0, 80)}`);
     }
-  } catch (err) {
-    if (aiStopped) {
-      setStatus(`AI stopped — ${done} of ${targets.length} ticket(s) analyzed; results kept`);
-    } else {
-      setStatus(`AI failed: ${err.message}`, true);
-      chrome.runtime.sendMessage({
-        type: "PROGRESS", stage: "diag",
-        detail: `AI extract failed after ${done}/${targets.length}: ${err.message}`
-      }).catch(() => {});
-    }
-  } finally {
-    aiActive = null;
-    aiRunning = false;
-    scheduleAiIdleRelease();
-    $("aiChip").classList.add("hidden");
-    await persistEdits();
   }
+  render();
+  await persistEdits();
+  const secs = Math.round((Date.now() - t0) / 1000);
+  setStatus(`Extract done — ${done} of ${targets.length} ticket(s) filled from closure notes`);
+  await log(`Extract finished · ${done}/${targets.length} ticket(s) filled in ${secs}s`);
 }
 
-$("aiBtn").addEventListener("click", e => runAiExtract(e.shiftKey).catch(err => setStatus(err.message, true)));
-
-$("aiStop").addEventListener("click", () => {
-  aiStopped = true;
-  aiActive?.stop("Stopped by user");
-  aiWarm = null;
-  aiWarmModel = "";
-});
+$("extractBtn").addEventListener("click", e => runExtract(e.shiftKey).catch(err => setStatus(err.message, true)));

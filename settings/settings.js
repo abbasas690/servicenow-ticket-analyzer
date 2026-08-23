@@ -11,9 +11,6 @@ const DEFAULTS = {
   params: {
     tablePageSize: 1000,
     debugResponses: false
-  },
-  ai: {
-    modelId: ""
   }
 };
 
@@ -49,9 +46,6 @@ function collect() {
     params: {
       tablePageSize: clampInt($("tablePageSize").value, 100, 5000, DEFAULTS.params.tablePageSize),
       debugResponses: !!$("debugResponses").checked
-    },
-    ai: {
-      modelId: $("aiModel").value
     }
   };
 }
@@ -69,7 +63,6 @@ function fill(s) {
       }
     }
     if (s.params && typeof s.params === "object") Object.assign(merged.params, s.params);
-    if (s.ai && typeof s.ai === "object") Object.assign(merged.ai, s.ai);
   }
   $("instanceUrl").value = merged.instanceUrl;
   $("ticketType").value = TICKET_TYPES.includes(merged.defaults.ticketType) ? merged.defaults.ticketType : "incident";
@@ -77,16 +70,6 @@ function fill(s) {
   $("teamMembers").value = formatNames(merged.defaults.teamMembers);
   $("tablePageSize").value = merged.params.tablePageSize;
   $("debugResponses").checked = !!merged.params.debugResponses;
-  if ([...$("aiModel").options].some(o => o.value === merged.ai.modelId)) {
-    $("aiModel").value = merged.ai.modelId;
-  }
-}
-
-function setCardStatus(id, text, isError = false) {
-  const el = $(id);
-  el.textContent = text;
-  el.style.color = isError ? "#f87171" : "#4ade80";
-  if (text) setTimeout(() => { if (el.textContent === text) el.textContent = ""; }, 6000);
 }
 
 function setStatus(text, isError = false) {
@@ -112,48 +95,5 @@ $("resetBtn").addEventListener("click", async () => {
   setStatus("Reset to defaults");
 });
 
-for (const m of AiExtract.AI_MODELS) {
-  const opt = document.createElement("option");
-  opt.value = m.id;
-  opt.textContent = m.label;
-  $("aiModel").appendChild(opt);
-}
-
-let aiDownloading = false;
-
-window.addEventListener("beforeunload", e => {
-  if (!aiDownloading) return;
-  e.preventDefault();
-  e.returnValue = "";
-});
-
-$("aiDownloadBtn").addEventListener("click", async () => {
-  if (aiDownloading) return;
-  const modelId = $("aiModel").value;
-  if (!modelId) { setCardStatus("aiStatus", "Pick a model first", true); return; }
-  aiDownloading = true;
-  const el = $("aiStatus");
-  const baseTitle = document.title;
-  const ai = AiClient.createAiClient();
-  try {
-    el.style.color = "#b9c2d4";
-    el.textContent = "Loading runtime…";
-    await ai.ensure(modelId, p => {
-      el.textContent = `${p.file} ${p.percent}%`;
-      document.title = `AI model ${p.percent}% — Settings`;
-    });
-    el.style.color = "#4ade80";
-    el.textContent = "Model ready (cached for offline use)";
-    await chrome.storage.local.set({ pluginSettings: collect() });
-    setStatus(`Saved — AI model ${modelId.split("/")[1] || modelId}`);
-  } catch (err) {
-    el.style.color = "#f87171";
-    el.textContent = `Download failed: ${err.message}`;
-  } finally {
-    ai.dispose();
-    aiDownloading = false;
-    document.title = baseTitle;
-  }
-});
 
 chrome.storage.local.get(["pluginSettings"], ({ pluginSettings }) => fill(pluginSettings));
