@@ -644,7 +644,9 @@ function getAi(modelId) {
   clearTimeout(aiWarmTimer);
   if (!aiWarm || aiWarmModel !== modelId) {
     aiWarm?.dispose();
-    aiWarm = AiClient.createAiClient();
+    const cores = navigator.hardwareConcurrency || 4;
+    const size = Math.max(1, Math.min(3, Math.floor((cores - 1) / 2)));
+    aiWarm = AiClient.createAiPool(size);
     aiWarmModel = modelId;
   }
   return aiWarm;
@@ -686,24 +688,23 @@ async function runAiExtract(rerun) {
     if (!modelId) throw new Error("No AI model selected — open Settings and download one");
     const ai = getAi(modelId);
     aiActive = ai;
-    setAiChip("AI: loading model…");
+    setAiChip(`AI: loading model (${ai.size} worker${ai.size > 1 ? "s" : ""})…`);
     const ready = await ai.ensure(modelId, p => setAiChip(`AI download: ${p.file} ${p.percent}%`));
-    setAiChip(`AI: ready (${(ready.device || "?").toUpperCase()})`);
+    setAiChip(`AI: ready (${(ready.device || "?").toUpperCase()} × ${ai.size})`);
     const aiLog = detail =>
       chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
     const t0 = Date.now();
-    await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · ${targets.length} ticket(s)`);
-    for (const row of targets) {
-      if (aiStopped) break;
-      setAiChip(`AI analyzing ${done + 1}/${targets.length}: ${row.number}`);
+    await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · device=${ready.device || "?"} · workers=${ai.size} · ${targets.length} ticket(s)`);
+    await ai.map(targets, async row => {
+      if (aiStopped) return;
       const res = await ai.extract(row.closeNotes);
       row.solutionType = res.solutionType;
       row.rootCause = res.rootCause;
-      render();
-      await persistEdits();
       done++;
+      setAiChip(`AI analyzing ${done}/${targets.length}: ${row.number}`);
+      render();
       await aiLog(`AI ${done}/${targets.length} ${row.number}: ${res.solutionType || "unclassified"}${res.rootCause ? ` · ${res.rootCause.slice(0, 80)}` : ""}`);
-    }
+    });
     const secs = Math.round((Date.now() - t0) / 1000);
     if (aiStopped) {
       setStatus(`AI stopped — ${done} of ${targets.length} ticket(s) analyzed; results kept`);
@@ -727,6 +728,7 @@ async function runAiExtract(rerun) {
     aiRunning = false;
     scheduleAiIdleRelease();
     $("aiChip").classList.add("hidden");
+    await persistEdits();
   }
 }
 

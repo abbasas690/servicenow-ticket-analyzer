@@ -36,15 +36,26 @@ async function detectDevice() {
 
 async function buildPipeline(device, modelId, report) {
   const T = await loadRuntime();
-  const built = await T.pipeline("text-generation", modelId, {
-    device,
-    dtype: "q4f16",
-    progress_callback: reportProgress(report)
-  });
-  pipe = built;
-  pipeModel = modelId;
-  pipeDevice = device;
-  return built;
+  const attempts = device === "webgpu"
+    ? [["webgpu", "q4f16"]]
+    : [["wasm", "q4"], ["wasm", "q4f16"]];
+  let lastErr = null;
+  for (const [dev, dtype] of attempts) {
+    try {
+      const built = await T.pipeline("text-generation", modelId, {
+        device: dev,
+        dtype,
+        progress_callback: reportProgress(report)
+      });
+      pipe = built;
+      pipeModel = modelId;
+      pipeDevice = dev;
+      return built;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Pipeline creation failed");
 }
 
 async function getPipe(modelId, report, forceDevice) {
