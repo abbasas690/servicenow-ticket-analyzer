@@ -157,7 +157,9 @@ function makeClient(instanceUrl) {  const client = new ServiceNowClient(instance
       const token = d.hadToken === null || d.hadToken === undefined
         ? ""
         : ` · token=${d.hadToken ? d.tokenSource || "sent" : "MISSING"}`;
-      progress("diag", `${d.path} → ${d.status}${ms} · via=${d.via}${token} · q=${d.query || ""}`);
+      const rows = d.bodyRows !== undefined && d.bodyRows !== null ? ` · result=${d.bodyRows}` : "";
+      const preview = d.bodyPreview ? ` · body=${d.bodyPreview}` : "";
+      progress("diag", `${d.path} → ${d.status}${ms} · via=${d.via}${token}${rows} · q=${d.query || ""}${preview}`);
     }
   });
   const clamp = (v, lo, hi) => {
@@ -168,6 +170,7 @@ function makeClient(instanceUrl) {  const client = new ServiceNowClient(instance
     if (s?.params) {
       client.auditBatchSize = clamp(s.params.auditBatchSize, 10, 200) || client.auditBatchSize;
       client.pageSize = clamp(s.params.tablePageSize, 100, 5000) || client.pageSize;
+      client.debugResponses = !!s.params.debugResponses;
     }
     return client;
   });

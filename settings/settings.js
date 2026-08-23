@@ -10,7 +10,8 @@ const DEFAULTS = {
   },
   params: {
     auditBatchSize: 80,
-    tablePageSize: 1000
+    tablePageSize: 1000,
+    debugResponses: false
   }
 };
 
@@ -50,7 +51,8 @@ function collect() {
     },
     params: {
       auditBatchSize: clampInt($("auditBatchSize").value, 10, 200, DEFAULTS.params.auditBatchSize),
-      tablePageSize: clampInt($("tablePageSize").value, 100, 5000, DEFAULTS.params.tablePageSize)
+      tablePageSize: clampInt($("tablePageSize").value, 100, 5000, DEFAULTS.params.tablePageSize),
+      debugResponses: !!$("debugResponses").checked
     }
   };
 }
@@ -75,6 +77,7 @@ function fill(s) {
   $("teamMembers").value = formatPairs(merged.defaults.teamMembers);
   $("auditBatchSize").value = merged.params.auditBatchSize;
   $("tablePageSize").value = merged.params.tablePageSize;
+  $("debugResponses").checked = !!merged.params.debugResponses;
 }
 
 function missingSysIds(s) {

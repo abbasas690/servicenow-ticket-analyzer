@@ -72,6 +72,12 @@
     <label>Table page size</label>
     <input id="tablePageSize" type="number" min="100" max="5000">
     <div class="hint">Rows per Table API page during pulls (100–5000, default 1000).</div>
+
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+      <input id="debugResponses" type="checkbox" style="width:auto;">
+      Log response data in panel log (debug)
+    </label>
+    <div class="hint">Adds a truncated body preview and row count for every API call to the log. Verbose — enable only while troubleshooting.</div>
   </div>
 
   <div class="btns">
