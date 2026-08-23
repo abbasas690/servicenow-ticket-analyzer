@@ -121,18 +121,26 @@ for (const m of AiExtract.AI_MODELS) {
 
 let aiDownloading = false;
 
+window.addEventListener("beforeunload", e => {
+  if (!aiDownloading) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
 $("aiDownloadBtn").addEventListener("click", async () => {
   if (aiDownloading) return;
   const modelId = $("aiModel").value;
   if (!modelId) { setCardStatus("aiStatus", "Pick a model first", true); return; }
   aiDownloading = true;
   const el = $("aiStatus");
+  const baseTitle = document.title;
   const ai = AiClient.createAiClient();
   try {
     el.style.color = "#b9c2d4";
     el.textContent = "Loading runtime…";
     await ai.ensure(modelId, p => {
       el.textContent = `${p.file} ${p.percent}%`;
+      document.title = `AI model ${p.percent}% — Settings`;
     });
     el.style.color = "#4ade80";
     el.textContent = "Model ready (cached for offline use)";
@@ -144,6 +152,7 @@ $("aiDownloadBtn").addEventListener("click", async () => {
   } finally {
     ai.dispose();
     aiDownloading = false;
+    document.title = baseTitle;
   }
 });
 
