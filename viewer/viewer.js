@@ -16,7 +16,19 @@ const COLUMNS = [
   ["resumeTime", "Resume time", "inst"],
   ["resolvedAt", "Resolved", "time"],
   ["solutionType", "Solution type", ""],
-  ["rootCause", "Root cause", ""]
+  ["rootCause", "Root cause", ""],
+  ["rep:type", "Type", "rep"],
+  ["rep:incidentHours", "Incident hours", "rep"],
+  ["rep:incidentTotalAge", "Incident total age", "rep"],
+  ["rep:incCurrentHours", "Inc current hours (from ASG)", "rep"],
+  ["rep:incidentCurrentAge", "Incident current age", "rep"],
+  ["rep:responseSLA", "Response SLA", "rep"],
+  ["rep:cumulativeSla", "Cumulative SLA", "rep"],
+  ["rep:cumulativeDays", "Cumulative days", "rep"],
+  ["rep:metResponseSLA", "Met response SLA", "rep"],
+  ["rep:metMinResolutionSLA", "Met min resolution SLA", "rep"],
+  ["rep:metMaxResolutionSLA", "Met max resolution SLA", "rep"],
+  ["rep:analysedDate", "Analysed date", "rep"]
 ];
 
 let data = null;
@@ -46,20 +58,46 @@ function setStatus(text, isError = false) {
 
 const TPL_SHEET_NAME = "all_ticket_details";
 const TPL_COLUMNS = [
+  { col: 1, get: (r, i) => String(i + 1) },
+  { col: 2, get: r => Report.buildReport(r, fmtInstant).opCo },
+  { col: 3, get: r => Report.buildReport(r, fmtInstant).domain },
+  { col: 4, get: r => Report.buildReport(r, fmtInstant).type },
   { col: 5, get: r => r.number },
   { col: 6, get: r => r.assignmentGroup },
   { col: 7, get: r => r.priority },
   { col: 8, get: r => r.shortDescription },
   { col: 9, get: r => r.state },
   { col: 10, get: r => r.assignedTo },
-  { col: 11, get: r => r.createdOn },
-  { col: 12, get: r => fmtInstant(r.assignTime, r) },
-  { col: 13, get: r => fmtInstant(r.acknTime, r) },
-  { col: 14, get: r => r.resolvedAt },
-  { col: 15, get: r => fmtInstant(r.suspendTime, r) },
-  { col: 16, get: r => fmtInstant(r.resumeTime, r) },
-  { col: 17, get: r => r.solutionType },
-  { col: 18, get: r => r.rootCause }
+  { col: 11, get: r => Report.buildReport(r, fmtInstant).created },
+  { col: 12, get: r => Report.buildReport(r, fmtInstant).assigned },
+  { col: 13, get: r => Report.buildReport(r, fmtInstant).ackn },
+  { col: 14, get: r => Report.buildReport(r, fmtInstant).resolved },
+  { col: 15, get: r => Report.buildReport(r, fmtInstant).susp },
+  { col: 16, get: r => Report.buildReport(r, fmtInstant).resumed },
+  { col: 17, get: r => Report.buildReport(r, fmtInstant).impactedApplication },
+  { col: 18, get: r => Report.buildReport(r, fmtInstant).resolutionType },
+  { col: 19, get: r => Report.buildReport(r, fmtInstant).rootCauseCategory },
+  { col: 20, get: () => "" },
+  { col: 21, get: () => "" },
+  { col: 22, get: () => "" },
+  { col: 23, get: () => "" },
+  { col: 24, get: () => "" },
+  { col: 25, get: () => "" },
+  { col: 26, get: r => Report.buildReport(r, fmtInstant).incidentHours },
+  { col: 27, get: r => Report.buildReport(r, fmtInstant).incidentTotalAge },
+  { col: 28, get: r => Report.buildReport(r, fmtInstant).incCurrentHours },
+  { col: 29, get: r => Report.buildReport(r, fmtInstant).incidentCurrentAge },
+  { col: 30, get: r => Report.buildReport(r, fmtInstant).responseSLA },
+  { col: 31, get: r => Report.buildReport(r, fmtInstant).cumulativeSla },
+  { col: 32, get: r => Report.buildReport(r, fmtInstant).cumulativeDays },
+  { col: 33, get: r => Report.buildReport(r, fmtInstant).timeTaken },
+  { col: 34, get: r => Report.buildReport(r, fmtInstant).metResponseSLA },
+  { col: 35, get: r => Report.buildReport(r, fmtInstant).metMinResolutionSLA },
+  { col: 36, get: r => Report.buildReport(r, fmtInstant).metMaxResolutionSLA },
+  { col: 37, get: r => Report.buildReport(r, fmtInstant).metResponseSLA },
+  { col: 38, get: r => Report.buildReport(r, fmtInstant).metMinResolutionSLA },
+  { col: 39, get: r => Report.buildReport(r, fmtInstant).metMaxResolutionSLA },
+  { col: 40, get: r => Report.buildReport(r, fmtInstant).analysedDate }
 ];
 
 let tplInfo = null;
@@ -244,7 +282,7 @@ function buildDataRowsXml(rows, startRow, styleMap) {
     for (const { col, get } of TPL_COLUMNS) {
       const letter = colLetter(col);
       const s = styleMap && styleMap[letter] !== undefined ? ` s="${styleMap[letter]}"` : "";
-      const v = get(row);
+      const v = get(row, i);
       if (v === null || v === undefined || String(v) === "") {
         if (!s) continue;
         cells += `<c r="${letter}${startRow + i}"${s}/>`;
@@ -260,7 +298,7 @@ function buildDataRowsXml(rows, startRow, styleMap) {
 function patchSheetXml(sheetXml, sharedStrings, dataRowsXml, startRow, lastDataRow) {
   const dimRe = /(<dimension ref=")([^"]*)(")/;
   if (dimRe.test(sheetXml)) {
-    sheetXml = sheetXml.replace(dimRe, `$1A1:R${lastDataRow}$3`);
+    sheetXml = sheetXml.replace(dimRe, `$1A1:AN${lastDataRow}$3`);
   }
   const sdOpen = sheetXml.search(/<sheetData\s*\/>/);
   if (sdOpen !== -1) {
@@ -509,10 +547,15 @@ function render() {
     for (const [key,, cls] of COLUMNS) {
       const td = document.createElement("td");
       if (cls) td.className = cls;
-      td.classList.add("editable");
-      let v = row[key];
-      if (cls === "inst") v = fmtInstant(v, row);
-      if ((cls === "time" || cls === "inst") && !v) td.classList.add("empty-time");
+      let v;
+      if (key.startsWith("rep:")) {
+        v = Report.buildReport(row, fmtInstant)[key.slice(4)] ?? "";
+      } else {
+        td.classList.add("editable");
+        v = row[key];
+        if (cls === "inst") v = fmtInstant(v, row);
+        if ((cls === "time" || cls === "inst") && !v) td.classList.add("empty-time");
+      }
       td.textContent = v === null || v === undefined ? "" : v;
       tr.appendChild(td);
     }
@@ -561,6 +604,7 @@ function displayedValue(row, key, cls) {
 let activeFinish = null;
 
 function startEdit(td) {
+  if (!td.classList.contains("editable")) return;
   if (activeFinish && !activeFinish(true)) return;
   const tr = td.parentElement;
   const sysId = tr.dataset.sysId;
