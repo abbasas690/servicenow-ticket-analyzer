@@ -406,7 +406,7 @@ function load(d) {
     $("empty").classList.remove("hidden");
     return;
   }
-  const missing = data.missingAudit ? ` · ${data.missingAudit} without audit history` : "";
+  const missing = data.missingAudit ? ` · ${data.missingAudit} without timeline events` : "";
   const runs = data.runs || [];
   const lastRun = runs[runs.length - 1];
   let scope;
@@ -424,7 +424,7 @@ function load(d) {
       const warn = document.createElement("div");
       warn.style.cssText = "padding:6px 18px;color:#f59e0b;font-size:12px;";
       warn.textContent =
-        "No audit history found for any pulled ticket. Common causes: (1) your role cannot read sys_audit on this instance - the API returns 200 with empty rows instead of an error; verify by opening /sys_audit_list.do?sysparm_query=documentkey=<a ticket sys_id> in this instance's browser tab. (2) Tickets were never updated through the platform. Ask your ServiceNow admin for sys_audit read access to enable timeline columns.";
+        "No timeline events found for any pulled ticket. Common causes: (1) the activity feed returned nothing - open a ticket's form in this instance's tab and check its Activity section renders field changes; (2) tickets were never updated through the platform; (3) list_history.do is blocked on this release. Timeline columns stay empty without feed events.";
       $("meta").after(warn);
     }
     let dbg = document.getElementById("debugLine");

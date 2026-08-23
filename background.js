@@ -168,12 +168,8 @@ function makeClient(instanceUrl) {  const client = new ServiceNowClient(instance
   };
   return chrome.storage.local.get("pluginSettings").then(({ pluginSettings: s }) => {
     if (s?.params) {
-      client.auditBatchSize = clamp(s.params.auditBatchSize, 10, 200) || client.auditBatchSize;
       client.pageSize = clamp(s.params.tablePageSize, 100, 5000) || client.pageSize;
       client.debugResponses = !!s.params.debugResponses;
-      const src = s.params.timelineSource;
-      if (src === "history" || src === "activity") client.timelineSource = src;
-      else client.timelineSource = "auto";
     }
     return client;
   });
@@ -319,30 +315,28 @@ async function runPull(msg) {
       const tLabel = TABLE_LABELS[table] || table;
       const sysIds = records.map(r => r.sys_id?.value || r.sys_id).filter(Boolean);
 
-      progress("phase2", `Phase 2 (${tLabel}): audit for ${sysIds.length} tickets...`);
-      const auditByTicket = await client.fetchAudit(
+      progress("phase2", `Phase 2 (${tLabel}): activity feed for ${sysIds.length} tickets...`);
+      const eventsByTicket = await client.fetchTimelineEvents(
         sysIds,
         ["assignment_group", "assigned_to", "state"],
-        p => progress("phase2", p.ticketsTotal != null
-          ? `Phase 2 (${tLabel}): audit ticket ${p.ticketsDone}/${p.ticketsTotal}`
-          : `Phase 2 (${tLabel}): batch ${p.batchesDone}/${p.batchesTotal}`),
+        p => progress("phase2", `Phase 2 (${tLabel}): activity ticket ${p.ticketsDone}/${p.ticketsTotal}`),
         abort.signal,
         table
       );
-      Analysis.normalizeAuditRefs(auditByTicket, [
+      Analysis.normalizeAuditRefs(eventsByTicket, [
         ...(settings?.defaults?.queues || []),
         ...(settings?.defaults?.teamMembers || []),
         ...groups
       ]);
-      auditCounts[table] = Object.keys(auditByTicket).length;
+      auditCounts[table] = Object.keys(eventsByTicket).length;
       if (!sampleRecord) sampleRecord = records[0];
       if (!sampleAuditRows.length) {
-        sampleAuditRows.push(...Object.entries(auditByTicket).slice(0, 3)
+        sampleAuditRows.push(...Object.entries(eventsByTicket).slice(0, 3)
           .map(([k, v]) => ({ sysId: k.slice(0, 8), rows: v.length })));
       }
 
       progress("analyze", `Applying timeline rules (${tLabel})...`);
-      const { rows, missingAudit } = analyzeAll(records, auditByTicket, snStateMap(table), { membersByQueue, fallbackMembers: teamIds });
+      const { rows, missingAudit } = analyzeAll(records, eventsByTicket, snStateMap(table), { membersByQueue, fallbackMembers: teamIds });
       allRows.push(...rows);
       missingAuditTotal += missingAudit;
     }
