@@ -41,6 +41,8 @@
       font-family:monospace; font-size:12px; padding:6px 12px; outline:2px solid #2563eb; outline-offset:-2px; }
     td.edit-invalid input { outline-color:#ef4444; }
     tr.flash td { animation:rowflash .9s ease-out; }
+    td.copied { animation:copyflash .8s ease-out; }
+    @keyframes copyflash { 0% { background:#1d4d2b; color:#a7f3d0; } 100% { background:transparent; } }
     @keyframes rowflash { 0% { background:#3b2f0b; } 100% { } }
     #hint { padding:0 18px 6px; color:#5d6673; font-size:11px; }
     #empty { padding:60px 20px; text-align:center; color:var(--dim); font-size:14px; }

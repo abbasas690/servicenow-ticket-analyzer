@@ -567,7 +567,9 @@ function render() {
         if (cls === "inst") v = fmtInstant(v, row);
         if ((cls === "time" || cls === "inst") && !v) td.classList.add("empty-time");
       }
-      td.textContent = v === null || v === undefined ? "" : v;
+      const text = v === null || v === undefined ? "" : String(v);
+      td.textContent = text;
+      td.title = text ? `${text}\n— single-click to copy${td.classList.contains("editable") ? " · double-click to edit" : ""}` : "";
       tr.appendChild(td);
     }
     frag.appendChild(tr);
