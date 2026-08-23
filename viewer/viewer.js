@@ -424,7 +424,7 @@ function load(d) {
       const warn = document.createElement("div");
       warn.style.cssText = "padding:6px 18px;color:#f59e0b;font-size:12px;";
       warn.textContent =
-        "No audit history found for any pulled ticket. Timeline columns stay empty unless tickets were changed through ServiceNow (UI/workflow). Seeded/demo rows created outside the platform have no history.";
+        "No audit history found for any pulled ticket. Common causes: (1) your role cannot read sys_audit on this instance - the API returns 200 with empty rows instead of an error; verify by opening /sys_audit_list.do?sysparm_query=documentkey=<a ticket sys_id> in this instance's browser tab. (2) Tickets were never updated through the platform. Ask your ServiceNow admin for sys_audit read access to enable timeline columns.";
       $("meta").after(warn);
     }
     let dbg = document.getElementById("debugLine");
@@ -435,7 +435,7 @@ function load(d) {
       $("meta").after(dbg);
     }
     dbg.textContent =
-      `debug · ticketsWithAudit=${d2.ticketsWithAudit} · sampleRecord=${JSON.stringify(d2.sampleRecord)} · sampleAudit=${JSON.stringify(d2.sampleAuditRowCounts)} · sampleTimelines=${JSON.stringify(d2.sampleTimelines || [])}`;
+      `debug · ticketsWithAudit=${d2.ticketsWithAudit} · byTable=${JSON.stringify(d2.auditCountsByTable || {})} · sampleRecord=${JSON.stringify(d2.sampleRecord)} · sampleAudit=${JSON.stringify(d2.sampleAuditRowCounts)} · sampleTimelines=${JSON.stringify(d2.sampleTimelines || [])}`;
   }
   buildHead();
   render();

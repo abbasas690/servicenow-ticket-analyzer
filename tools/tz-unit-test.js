@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { detectSnOffsetMs, rowOffsetMs, fmtWithOffset } = require("../analysis/workbook.js");
+const { detectSnOffsetMs, rowOffsetMs, fmtWithOffset, pairOffsetMs } = require("../analysis/workbook.js");
 
 let pass = 0;
 let fail = 0;
@@ -57,6 +57,17 @@ const winter = { openedAt: "2021-01-15 05:04:14", openedAtRaw: "2026-01-15 13:04
 check("summer row -> -7h even with winter global fallback", rowOffsetMs(summer, -8 * 3600e3) === -7 * 3600e3);
 check("winter row -> -8h even with summer global fallback", rowOffsetMs(winter, -7 * 3600e3) === -8 * 3600e3, rowOffsetMs(winter, -7 * 3600e3));
 check("row without pair falls back to global", rowOffsetMs({ openedAt: "" }, -7 * 3600e3) === -7 * 3600e3);
+
+console.log("== non-ISO display formats (org instances) ==");
+check("dd-MM-yyyy display parses (iagprod style, +5:30 Kolkata)",
+  pairOffsetMs("10-08-2026 11:06:40", "2026-08-10 05:36:40") === 19800e3,
+  pairOffsetMs("10-08-2026 11:06:40", "2026-08-10 05:36:40"));
+check("MM/dd/yyyy display parses (US profile)",
+  pairOffsetMs("08/10/2026 11:06:40 PM", "2026-08-10 17:36:40") === 19800e3,
+  pairOffsetMs("08/10/2026 11:06:40 PM", "2026-08-10 17:36:40"));
+check("dd.MM.yyyy display parses",
+  pairOffsetMs("10.08.2026 12:06:40", "2026-08-10 05:36:40") !== null);
+check("garbage still rejected", pairOffsetMs("nope", "2026-08-10 05:36:40") === null);
 
 console.log("== format: fmtWithOffset ==");
 

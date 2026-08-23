@@ -104,6 +104,14 @@ queue context.
   `fmtInstant(v, row)` and Excel `buildWorkbook` use it so timeline columns match the
   Activity UI even when rows span DST seasons (winter -8h vs summer -7h). Rows carry
   raw companions (openedAtRaw etc.) — keep fetching them via `sysparm_display_value:"all"`.
+- Display values are parsed format-tolerantly (`parseSnDisplayMs` in workbook.js):
+  ISO yyyy-MM-dd, dd-MM-yyyy, dd.MM.yyyy, MM/dd/yyyy with optional AM/PM. Org
+  instances commonly render e.g. "10-08-2026 11:06:40" for raw "2026-08-10 05:36:40"
+  (day-first + profile tz). Raw REST values are always ISO and need no tolerance.
+- Empty audit on a run where tickets clearly HAVE history = sys_audit read ACL
+  blocks the account: Table API returns 200 + zero rows rather than 403. The
+  viewer shows a warning banner; remediation is an ACL/role change by the admin,
+  not a plugin workaround.
 - Tests: `node tools/tz-unit-test.js` (offline, exits non-zero on failure);
   `TZ_INSTANCE=… TZ_USER=… TZ_PASS=… node tools/tz-live-test.js` (verifies rendered
   times equal SN's display values on scenario + cross-DST tickets).

@@ -349,7 +349,8 @@ async function runPull(msg) {
         totalPulled: merged.length,
         debug: {
           sampleRecord,
-          ticketsWithAudit: auditCounts,
+          ticketsWithAudit: Object.values(auditCounts).reduce((a, b) => a + b, 0),
+          auditCountsByTable: auditCounts,
           sampleAuditRowCounts: sampleAuditRows,
           sampleTimelines: rows.filter(r => r.assignTime || r.acknTime || r.suspendTime || r.resumeTime).slice(0, 3)
             .map(r => ({ number: r.number, assign: r.assignTime, ackn: r.acknTime, suspend: r.suspendTime, resume: r.resumeTime }))

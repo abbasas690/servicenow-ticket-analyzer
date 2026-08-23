@@ -1,8 +1,28 @@
+function parseSnDisplayMs(s) {
+  const str = String(s || "").trim();
+  let m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?/);
+  if (!m) {
+    m = str.match(/^(\d{1,2})[-.](\d{1,2})[-.](\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?/);
+    if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], pmHour(+m[4], m[7]), +m[5], +(m[6] || 0));
+    m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?/);
+    if (m) return Date.UTC(+m[3], +m[1] - 1, +m[2], pmHour(+m[4], m[7]), +m[5], +(m[6] || 0));
+    const p = Date.parse(str);
+    return Number.isFinite(p) ? p : NaN;
+  }
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], pmHour(+m[4], m[7]), +m[5], +(m[6] || 0));
+}
+
+function pmHour(h, ap) {
+  if (/p/i.test(ap || "") && h < 12) return h + 12;
+  if (/a/i.test(ap || "") && h === 12) return 0;
+  return h;
+}
+
 function pairOffsetMs(disp, raw) {
   const d = String(disp || "");
   const r = String(raw || "");
   if (!d || !r) return null;
-  const de = Date.parse(d.replace(" ", "T") + (/Z$|[+-]\d\d:?\d\d$/.test(d) ? "" : "Z"));
+  const de = parseSnDisplayMs(d);
   const re = Date.parse(r.replace(" ", "T") + (/Z$|[+-]\d\d:?\d\d$/.test(r) ? "" : "Z"));
   if (!Number.isFinite(de) || !Number.isFinite(re)) return null;
   return de - re;
@@ -100,5 +120,5 @@ function buildSummary(rows, groupName) {
   return { rows: out };
 }
 
-if (typeof self !== "undefined") self.Workbook = { buildWorkbook, detectSnOffsetMs, rowOffsetMs, fmtWithOffset };
-if (typeof module !== "undefined") module.exports = { buildWorkbook, detectSnOffsetMs, rowOffsetMs, fmtWithOffset };
+if (typeof self !== "undefined") self.Workbook = { buildWorkbook, detectSnOffsetMs, rowOffsetMs, fmtWithOffset, pairOffsetMs };
+if (typeof module !== "undefined") module.exports = { buildWorkbook, detectSnOffsetMs, rowOffsetMs, fmtWithOffset, pairOffsetMs };
