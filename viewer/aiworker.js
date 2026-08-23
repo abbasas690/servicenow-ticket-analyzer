@@ -1,5 +1,7 @@
 import "../analysis/aiextract.js";
 
+const WASM_PATH = new URL("../lib/vendor/", self.location).href;
+
 let Tmod = null;
 let pipe = null;
 let pipeModel = null;
@@ -8,7 +10,7 @@ async function getPipe(modelId, report) {
   if (!Tmod) {
     Tmod = await import("../lib/vendor/transformers.min.js");
     Tmod.env.backends.onnx.wasm.numThreads = 1;
-    Tmod.env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("lib/vendor/");
+    Tmod.env.backends.onnx.wasm.wasmPaths = WASM_PATH;
   }
   if (!pipe || pipeModel !== modelId) {
     pipeModel = null;
