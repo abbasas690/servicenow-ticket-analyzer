@@ -277,6 +277,30 @@ function extractEventsFromActivity(entries) {
   return out;
 }
 
+function extractEventsFromListHistory(payload) {
+  const byTicket = {};
+  for (const entry of payload?.entries || []) {
+    if (!entry || typeof entry !== "object") continue;
+    const docId = String(entry.document_id || "").trim();
+    if (!docId) continue;
+    const at = String(entry.sys_created_on || "").trim();
+    if (!at) continue;
+    for (const ch of entry.entries?.changes || []) {
+      if (!ch || typeof ch !== "object") continue;
+      let fname = String(ch.field_name || "").trim();
+      if (!fname) continue;
+      if (fname === "incident_state") fname = "state";
+      (byTicket[docId] ||= []).push({
+        field: fname,
+        oldValue: String(ch.old_value ?? ch.sanitized_old_value ?? ""),
+        newValue: String(ch.new_value ?? ch.sanitized_new_value ?? ""),
+        at
+      });
+    }
+  }
+  return byTicket;
+}
+
 function normalizeAuditRefs(byTicket, refPairs) {
   const map = new Map();
   for (const p of refPairs || []) {
@@ -299,7 +323,7 @@ function normalizeAuditRefs(byTicket, refPairs) {
 }
 
 const G = typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : null;
-if (G) G.Analysis = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity };
+if (G) G.Analysis = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity, extractEventsFromListHistory };
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity };
+  module.exports = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity, extractEventsFromListHistory };
 }

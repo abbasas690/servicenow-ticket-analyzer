@@ -1,5 +1,5 @@
 "use strict";
-const { extractEventsFromActivity } = require("../analysis/phase2.js");
+const { extractEventsFromActivity, extractEventsFromListHistory } = require("../analysis/phase2.js");
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -52,5 +52,49 @@ check("duplicates deduped", dupes.length === 1);
 
 check("empty input safe", extractEventsFromActivity([]).length === 0);
 check("junk input safe", extractEventsFromActivity([null, "str", 42, {}]).length === 0);
+
+console.log("== list_history.do payload ==");
+const LH_SAMPLE = {
+  display_value: "Incident",
+  entries: [
+    {
+      document_id: "T1",
+      sys_created_on: "2026-08-22 13:43:11",
+      sys_created_on_adjusted: "2026-08-22 06:43:11",
+      entries: {
+        journal: [],
+        custom: [],
+        changes: [
+          { field_name: "incident_state", old_value: "On Hold", new_value: "Resolved" },
+          { field_name: "close_code", old_value: "", new_value: "Solution provided" }
+        ]
+      }
+    },
+    {
+      document_id: "T2",
+      sys_created_on: "2026-08-22 13:43:07",
+      entries: { changes: [{ field_name: "assigned_to", old_value: "", new_value: "System Administrator" }] }
+    },
+    {
+      document_id: "T3",
+      sys_created_on: "",
+      entries: { changes: [{ field_name: "state", old_value: "a", new_value: "b" }] }
+    },
+    {
+      document_id: "T1",
+      sys_created_on: "2026-08-22 13:43:03",
+      entries: { changes: [{ field_name: "impact", old_value: "", new_value: "3 - Low" }] }
+    }
+  ]
+};
+const lh = extractEventsFromListHistory(LH_SAMPLE);
+check("grouped by document_id", Object.keys(lh).sort().join() === "T1,T2");
+check("incident_state renamed to state", lh.T1.some(e =>
+  e.field === "state" && e.oldValue === "On Hold" && e.newValue === "Resolved"));
+check("raw UTC timestamp used (not adjusted)", lh.T1[0].at === "2026-08-22 13:43:11");
+check("undated entry dropped entirely", !lh.T3);
+check("non-timeline fields kept for caller filtering", lh.T1.some(e => e.field === "impact"));
+check("empty payload safe", Object.keys(extractEventsFromListHistory(null)).length === 0);
+check("entries-not-array safe", Object.keys(extractEventsFromListHistory({ entries: "x" })).length === 0);
 
 process.exit(failures ? 1 : 0);

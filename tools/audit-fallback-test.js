@@ -123,10 +123,39 @@ const mkClient = (t, diags) => new ServiceNowClient("https://x.service-now.com",
   check("no sys_audit request made", !t.calls.some(u => u.includes("/sys_audit")));
   check("history rows returned", got.AAA?.length === 1);
 
-  console.log("== timelineSource=activity uses only activity stream ==");
+  console.log("== timelineSource=activity uses list_history.do first ==");
+  t = mkTransport(async url => {
+    if (url.includes("/list_history.do")) {
+      const id = /sys_id=([A-Z]+)/.exec(url)?.[1] || "AAA";
+      return { ok: true, status: 200, via: "mock", hadToken: true, text: JSON.stringify({
+        display_value: "Incident",
+        entries: [{
+          document_id: id,
+          sys_created_on: "2026-08-23 06:06:43",
+          sys_created_on_adjusted: "2026-08-22 23:06:43",
+          entries: { journal: [], custom: [], changes: [
+            { field_name: "incident_state", old_value: "New", new_value: "In Progress" },
+            { field_name: "close_notes", old_value: "", new_value: "seeded" }
+          ] }
+        }]
+      }) };
+    }
+    return { ok: true, status: 200, via: "mock", hadToken: true, text: JSON.stringify({ result: [] }) };
+  });
+  const progress = [];
+  c = mkClient(t);
+  c.timelineSource = "activity";
+  got = await c.fetchAudit(["AAA", "BBB"], FIELDS, p => progress.push(p));
+  check("only list_history.do called", t.calls.every(u => u.includes("/list_history.do")));
+  check("one call per ticket", t.calls.filter(u => u.includes("/list_history.do")).length === 2);
+  check("incident_state mapped to state", got.AAA.some(e => e.field === "state" && e.newValue === "In Progress"));
+  check("non-timeline fields filtered", !got.AAA.some(e => e.field === "close_notes"));
+  check("progress reported", progress.length === 2);
+
+  console.log("== list_history.do broken -> falls back to activity/stream ==");
   t = mkTransport(async url => ({
     ok: true, status: 200, via: "mock", hadToken: true,
-    text: JSON.stringify({
+    text: url.includes("/list_history.do") ? "<html>nope</html>" : JSON.stringify({
       result: { entries: [
         { author: "x", text: "Assignment group changed from N to Q on 2026-08-23 06:06:43" },
         { changes: [{ label: "Assigned to", old_value: "", new_value: "Ravi", timestamp: "2026-08-23 06:07:00" }] }
@@ -134,17 +163,15 @@ const mkClient = (t, diags) => new ServiceNowClient("https://x.service-now.com",
     })
   }));
   const diagsA = [];
-  const progress = [];
   c = mkClient(t, diagsA);
   c.timelineSource = "activity";
-  got = await c.fetchAudit(["AAA", "BBB"], FIELDS, p => progress.push(p));
-  check("only activity-stream endpoint called", t.calls.every(u => u.includes("/api/now/v1/activity/stream")));
-  check("one call per ticket", t.calls.length === 2);
-  check("text + structured events parsed per ticket",
-    got.AAA.length === 2 && got.BBB.length === 2 &&
-    got.AAA.some(e => e.field === "assignment_group") &&
-    got.BBB.some(e => e.field === "assigned_to"));
-  check("progress reported", progress.length === 2);
+  got = await c.fetchAudit(["AAA"], FIELDS);
+  check("both endpoints tried", t.calls.some(u => u.includes("/list_history.do")) &&
+    t.calls.some(u => u.includes("/api/now/v1/activity/stream")));
+  check("stream events parsed after fallback", got.AAA.length === 2);
+  check("fallback note emitted", diagsA.some(d => d.kind === "warn" && /using \/api\/now\/v1\/activity\/stream/.test(d.note || "")));
+
+  console.log("== fallback choice memoized for instance ==");
 
   console.log("== undated history lines dropped with warning ==");
   t = mkTransport(async url => ({
