@@ -686,27 +686,52 @@ async function runAiExtract(rerun) {
   $("aiChip").classList.remove("hidden");
   let done = 0;
   try {
+    const aiLog = detail =>
+      chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
+    const t0 = Date.now();
+
+    const pendingAI = [];
+    for (const row of targets) {
+      const h = AiExtract.extractHeuristic(row.closeNotes);
+      if (h.solutionType && h.rootCause) {
+        row.solutionType = h.solutionType;
+        row.rootCause = h.rootCause;
+        done++;
+        await aiLog(`AI ${done}/${targets.length} ${row.number}: ${h.solutionType} · ${h.rootCause.slice(0, 80)} · regex`);
+      } else {
+        pendingAI.push({ row, h });
+      }
+    }
+    render();
+
+    if (!pendingAI.length) {
+      setStatus(`${targets.length} ticket(s) resolved by regex — no model needed`);
+      await aiLog(`AI extract finished · ${targets.length} ticket(s) by regex in ${Math.round((Date.now() - t0) / 1000)}s · no model used`);
+      return;
+    }
+
     const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
     const modelId = pluginSettings?.ai?.modelId;
-    if (!modelId) throw new Error("No AI model selected — open Settings and download one");
+    if (!modelId) {
+      if (done) setStatus(`${done} ticket(s) filled by regex — remaining need an AI model (open Settings)`, true);
+      throw new Error("No AI model selected — open Settings and download one");
+    }
+    const regexCount = done;
     const ai = getAi(modelId);
     aiActive = ai;
     setAiChip(`AI: loading model (${ai.size} worker${ai.size > 1 ? "s" : ""})…`);
     const ready = await ai.ensure(modelId, p => setAiChip(`AI download: ${p.file} ${p.percent}%`));
     setAiChip(`AI: ready (${(ready.device || "?").toUpperCase()} × ${ai.size})`);
-    const aiLog = detail =>
-      chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
-    const t0 = Date.now();
-    await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · device=${ready.device || "?"} · workers=${ai.size} · ${targets.length} ticket(s)`);
-    await ai.map(targets, async row => {
+    await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · device=${ready.device || "?"} · workers=${ai.size} · ${pendingAI.length} ticket(s) via model (${regexCount} already by regex)`);
+    await ai.map(pendingAI, async ({ row, h }) => {
       if (aiStopped) return;
       const res = await ai.extract(row.closeNotes);
-      row.solutionType = res.solutionType;
-      row.rootCause = res.rootCause;
+      row.solutionType = res.solutionType || h.solutionType || "";
+      row.rootCause = res.rootCause || h.rootCause || "";
       done++;
       setAiChip(`AI analyzing ${done}/${targets.length}: ${row.number}`);
       render();
-      await aiLog(`AI ${done}/${targets.length} ${row.number}: ${res.solutionType || "unclassified"}${res.rootCause ? ` · ${res.rootCause.slice(0, 80)}` : ""}`);
+      await aiLog(`AI ${done}/${targets.length} ${row.number}: ${row.solutionType || "unclassified"}${row.rootCause ? ` · ${row.rootCause.slice(0, 80)}` : ""}`);
     });
     const secs = Math.round((Date.now() - t0) / 1000);
     if (aiStopped) {
