@@ -3,7 +3,6 @@ const $ = id => document.getElementById(id);
 const els = {
   instance: $("instance"), connect: $("connectBtn"), connState: $("connState"),
   ticketType: $("ticketType"),
-  onlyMyQueue: $("onlyMyQueue"),
   rawQuery: $("rawQuery"), generatedQuery: $("generatedQuery"), advancedBox: $("advancedBox"),
   filterListCard: $("filterListCard"), filterListBox: $("filterListBox"), addFilterBtn: $("addFilterBtn"),
   condRows: $("condRows"), addCondBtn: $("addCondBtn"),
@@ -399,13 +398,12 @@ function requireInstance() {
 function currentFilters() {
   const missing = cfgMembers.filter(m => !m.sysId).map(m => m.name);
   if (missing.length) log(`Team members without sys_id are skipped: ${missing.join(", ")}`, "error");
-  return {
-    table: els.ticketType.value,
-    memberSysIds: cfgMembers.filter(m => m.sysId).map(m => m.sysId),
-    conditions: collectConditions(),
-    onlyMyQueue: els.onlyMyQueue.checked,
-    rawQuery: els.rawQuery.value
-  };
+    return {
+      table: els.ticketType.value,
+      memberSysIds: cfgMembers.filter(m => m.sysId).map(m => m.sysId),
+      conditions: collectConditions(),
+      rawQuery: els.rawQuery.value
+    };
 }
 
 function configuredGroups() {
@@ -518,7 +516,7 @@ function refreshGenerated() {
 }
 
 ["change", "input"].forEach(ev => {
-  [els.onlyMyQueue, els.ticketType].forEach(el =>
+  [els.ticketType].forEach(el =>
     el.addEventListener(ev, () => { refreshGenerated(); })
   );
 });
@@ -574,7 +572,7 @@ els.runBtn.addEventListener("click", async () => {
     setBusy(true);
     const live = currentFilters();
     const sets = filterList.length
-      ? filterList.map(f => ({ ...f, onlyMyQueue: live.onlyMyQueue, rawQuery: live.rawQuery }))
+      ? filterList.map(f => ({ ...f, rawQuery: live.rawQuery }))
       : [live];
     await send({
       type: "RUN",
