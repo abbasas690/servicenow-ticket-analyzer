@@ -633,32 +633,7 @@ $("tbl").tBodies[0].addEventListener("dblclick", e => {
 
 $("search").addEventListener("input", render);
 
-let aiPipe = null;
-let aiPipeModel = null;
 let aiRunning = false;
-
-async function ensureAiPipeline() {
-  const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
-  const modelId = pluginSettings?.ai?.modelId;
-  if (!modelId) throw new Error("No AI model selected — open Settings and download one");
-  if (aiPipe && aiPipeModel === modelId) return aiPipe;
-  setStatus("Loading AI runtime…");
-  const T = await import("../lib/vendor/transformers.min.js");
-  T.env.backends.onnx.wasm.numThreads = 1;
-  T.env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("lib/vendor/");
-  let lastFile = "";
-  aiPipe = await T.pipeline("text-generation", modelId, {
-    dtype: "q4f16",
-    progress_callback: p => {
-      if (p.status === "progress" && p.file !== lastFile) {
-        lastFile = p.file;
-        setStatus(`AI download: ${p.file} ${Math.round((p.progress || 0))}%`);
-      }
-    }
-  });
-  aiPipeModel = modelId;
-  return aiPipe;
-}
 
 async function runAiExtract(rerun) {
   if (aiRunning) { setStatus("AI analysis already running", true); return; }
@@ -672,18 +647,19 @@ async function runAiExtract(rerun) {
       : "No tickets have resolution notes to analyze");
     return;
   }
+  const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
+  const modelId = pluginSettings?.ai?.modelId;
+  if (!modelId) throw new Error("No AI model selected — open Settings and download one");
   aiRunning = true;
+  const ai = AiClient.createAiClient();
   try {
-    const pipe = await ensureAiPipeline();
+    await ai.ensure(modelId, p => setStatus(`AI download: ${p.file} ${p.percent}%`));
     let done = 0;
     for (const row of targets) {
-      setStatus(`AI analyzing ${++done}/${targets.length}: ${row.number}`);
-      const messages = AiExtract.buildClosurePrompt(row.closeNotes);
-      const out = await pipe(messages, { max_new_tokens: 120, do_sample: false });
-      const text = out[0]?.generated_text?.at(-1)?.content || "";
-      const parsed = AiExtract.parseClosureJson(text);
-      row.solutionType = parsed.solutionType;
-      row.rootCause = parsed.rootCause;
+      setStatus(`AI analyzing ${++done}/${targets.length}: ${row.number} (page stays responsive)`);
+      const res = await ai.extract(row.closeNotes);
+      row.solutionType = res.solutionType;
+      row.rootCause = res.rootCause;
       render();
       await persistEdits();
     }
@@ -691,6 +667,7 @@ async function runAiExtract(rerun) {
   } catch (err) {
     setStatus(`AI failed: ${err.message}`, true);
   } finally {
+    ai.dispose();
     aiRunning = false;
   }
 }

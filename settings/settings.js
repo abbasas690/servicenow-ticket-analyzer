@@ -127,21 +127,12 @@ $("aiDownloadBtn").addEventListener("click", async () => {
   if (!modelId) { setCardStatus("aiStatus", "Pick a model first", true); return; }
   aiDownloading = true;
   const el = $("aiStatus");
+  const ai = AiClient.createAiClient();
   try {
     el.style.color = "#b9c2d4";
     el.textContent = "Loading runtime…";
-    const T = await import("../lib/vendor/transformers.min.js");
-    T.env.backends.onnx.wasm.numThreads = 1;
-    T.env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("lib/vendor/");
-    let lastFile = "";
-    await T.pipeline("text-generation", modelId, {
-      dtype: "q4f16",
-      progress_callback: p => {
-        if (p.status === "progress" && p.file) {
-          if (p.file !== lastFile) { lastFile = p.file; }
-          el.textContent = `${p.file} ${Math.round(p.progress || 0)}%`;
-        }
-      }
+    await ai.ensure(modelId, p => {
+      el.textContent = `${p.file} ${p.percent}%`;
     });
     el.style.color = "#4ade80";
     el.textContent = "Model ready (cached for offline use)";
@@ -151,6 +142,7 @@ $("aiDownloadBtn").addEventListener("click", async () => {
     el.style.color = "#f87171";
     el.textContent = `Download failed: ${err.message}`;
   } finally {
+    ai.dispose();
     aiDownloading = false;
   }
 });
