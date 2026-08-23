@@ -25,7 +25,6 @@ let sortDir = 1;
 
 chrome.storage.local.get(["lastData"], ({ lastData }) => load(lastData));
 loadTplInfo();
-});
 
 chrome.runtime.onMessage.addListener(msg => {
   if (msg?.type === "DATA_UPDATED") {
