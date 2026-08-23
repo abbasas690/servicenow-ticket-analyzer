@@ -54,11 +54,11 @@ const TPL_COLUMNS = [
   { col: 9, get: r => r.state },
   { col: 10, get: r => r.assignedTo },
   { col: 11, get: r => r.createdOn },
-  { col: 12, get: r => fmtInstant(r.assignTime) },
-  { col: 13, get: r => fmtInstant(r.acknTime) },
+  { col: 12, get: r => fmtInstant(r.assignTime, r) },
+  { col: 13, get: r => fmtInstant(r.acknTime, r) },
   { col: 14, get: r => r.resolvedAt },
-  { col: 15, get: r => fmtInstant(r.suspendTime) },
-  { col: 16, get: r => fmtInstant(r.resumeTime) }
+  { col: 15, get: r => fmtInstant(r.suspendTime, r) },
+  { col: 16, get: r => fmtInstant(r.resumeTime, r) }
 ];
 
 let tplInfo = null;
@@ -487,12 +487,15 @@ function currentRows() {
 
 let snOffsetMs = 0;
 
-function fmtInstant(v) {
+function fmtInstant(v, row) {
   if (!v) return "";
   const d = new Date(v);
   if (isNaN(d)) return String(v);
   const p = n => String(n).padStart(2, "0");
-  const s = new Date(d.getTime() + snOffsetMs);
+  const off = typeof rowOffsetMs === "function"
+    ? rowOffsetMs(row, snOffsetMs)
+    : snOffsetMs;
+  const s = new Date(d.getTime() + off);
   return `${s.getUTCFullYear()}-${p(s.getUTCMonth() + 1)}-${p(s.getUTCDate())} ` +
     `${p(s.getUTCHours())}:${p(s.getUTCMinutes())}:${p(s.getUTCSeconds())}`;
 }
@@ -511,7 +514,7 @@ function render() {
       if (cls) td.className = cls;
       td.classList.add("editable");
       let v = row[key];
-      if (cls === "inst") v = fmtInstant(v);
+      if (cls === "inst") v = fmtInstant(v, row);
       if ((cls === "time" || cls === "inst") && !v) td.classList.add("empty-time");
       td.textContent = v === null || v === undefined ? "" : v;
       tr.appendChild(td);
@@ -554,7 +557,7 @@ function parseLocalInput(text) {
 
 function displayedValue(row, key, cls) {
   const v = row[key];
-  if (cls === "inst") return fmtInstant(v);
+  if (cls === "inst") return fmtInstant(v, row);
   return v === null || v === undefined ? "" : String(v);
 }
 

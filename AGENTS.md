@@ -91,12 +91,20 @@ queue context.
 
 ### Timezone contract
 - ServiceNow REST raw datetimes are UTC; `parseUtc()` appends Z before parsing.
-- All displayed times must follow the INSTANCE user-profile clock, not the browser:
-  `detectSnOffsetMs()` (analysis/workbook.js) infers the offset from paired openedAt
-  display vs raw values; viewer `fmtInstant` and Excel `fmtWithOffset` shift timeline
-  columns by that offset so they match the ServiceNow Activity UI on any device.
-  Rows carry raw companions (openedAtRaw/closedAtRaw/resolvedAtRaw) for detection;
-  offset 0 fallback when absent.
+- All displayed times must follow the INSTANCE clock (what the Activity UI shows),
+  never the browser. The instance's effective zone may have NO API-visible source:
+  `sys_user.time_zone`, `sys_user_preference`, and `glide.sys.default.tz` can all be
+  empty while SN still renders display values in the server's zone (e.g. Los Angeles).
+  Therefore the ONLY reliable oracle is SN's own display/raw pair per record.
+- `detectSnOffsetMs(rows)` (analysis/workbook.js) infers the offset as the MEDIAN of
+  openedAt-display minus openedAtRaw pairs across rows (up to 200) — not first-row-only.
+- `rowOffsetMs(row, fallback)` gives each row's OWN offset from its pair; viewer
+  `fmtInstant(v, row)` and Excel `buildWorkbook` use it so timeline columns match the
+  Activity UI even when rows span DST seasons (winter -8h vs summer -7h). Rows carry
+  raw companions (openedAtRaw etc.) — keep fetching them via `sysparm_display_value:"all"`.
+- Tests: `node tools/tz-unit-test.js` (offline, exits non-zero on failure);
+  `TZ_INSTANCE=… TZ_USER=… TZ_PASS=… node tools/tz-live-test.js` (verifies rendered
+  times equal SN's display values on scenario + cross-DST tickets).
 
 ### Download path (MV3 constraint)
 The service worker never touches XLSX bytes. The viewer page loads the user's

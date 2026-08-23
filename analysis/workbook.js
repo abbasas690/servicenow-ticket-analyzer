@@ -1,13 +1,29 @@
+function pairOffsetMs(disp, raw) {
+  const d = String(disp || "");
+  const r = String(raw || "");
+  if (!d || !r) return null;
+  const de = Date.parse(d.replace(" ", "T") + (/Z$|[+-]\d\d:?\d\d$/.test(d) ? "" : "Z"));
+  const re = Date.parse(r.replace(" ", "T") + (/Z$|[+-]\d\d:?\d\d$/.test(r) ? "" : "Z"));
+  if (!Number.isFinite(de) || !Number.isFinite(re)) return null;
+  return de - re;
+}
+
 function detectSnOffsetMs(rows) {
+  const offs = [];
   for (const r of rows || []) {
-    const disp = String(r.openedAt || "");
-    const raw = String(r.openedAtRaw || "");
-    if (!disp || !raw) continue;
-    const de = Date.parse(disp.replace(" ", "T") + "Z");
-    const re = Date.parse(raw.replace(" ", "T") + (/Z$|[+-]\d\d:?\d\d$/.test(raw) ? "" : "Z"));
-    if (Number.isFinite(de) && Number.isFinite(re)) return de - re;
+    const o = pairOffsetMs(r.openedAt, r.openedAtRaw);
+    if (o !== null) offs.push(o);
+    if (offs.length >= 200) break;
   }
-  return 0;
+  if (!offs.length) return 0;
+  offs.sort((a, b) => a - b);
+  const mid = offs.length >> 1;
+  return offs.length % 2 ? offs[mid] : Math.round((offs[mid - 1] + offs[mid]) / 2);
+}
+
+function rowOffsetMs(row, fallback) {
+  const o = pairOffsetMs(row?.openedAt, row?.openedAtRaw);
+  return o === null ? (fallback || 0) : o;
 }
 
 function fmtWithOffset(v, offsetMs) {
@@ -26,7 +42,8 @@ function buildWorkbook(rows, groupName) {
   const snOffsetMs = detectSnOffsetMs(rows);
   const sheetRows = rows.map(r => {
     const c = { ...r };
-    for (const k of TIME_KEYS) if (c[k]) c[k] = fmtWithOffset(c[k], snOffsetMs);
+    const off = rowOffsetMs(r, snOffsetMs);
+    for (const k of TIME_KEYS) if (c[k]) c[k] = fmtWithOffset(c[k], off);
     return c;
   });
 
@@ -83,5 +100,5 @@ function buildSummary(rows, groupName) {
   return { rows: out };
 }
 
-if (typeof self !== "undefined") self.Workbook = { buildWorkbook, detectSnOffsetMs, fmtWithOffset };
-if (typeof module !== "undefined") module.exports = { buildWorkbook, detectSnOffsetMs, fmtWithOffset };
+if (typeof self !== "undefined") self.Workbook = { buildWorkbook, detectSnOffsetMs, rowOffsetMs, fmtWithOffset };
+if (typeof module !== "undefined") module.exports = { buildWorkbook, detectSnOffsetMs, rowOffsetMs, fmtWithOffset };
