@@ -420,6 +420,13 @@ function load(d) {
   }
   $("meta").textContent =
     `${scope} · pulled ${data.at.slice(0, 16).replace("T", " ")}${missing}`;
+  if (lastRun?.cached) {
+    const badge = document.createElement("span");
+    const age = lastRun.cacheAt ? ` (${Math.max(1, Math.round((Date.now() - lastRun.cacheAt) / 60000))} min old)` : "";
+    badge.textContent = ` · cached data${age}`;
+    badge.style.cssText = "color:#f59e0b;font-weight:600;";
+    $("meta").appendChild(badge);
+  }
   if (data.debug && data.debug.ticketsWithAudit === 0) {
     const warn = document.createElement("div");
     warn.style.cssText = "padding:6px 18px;color:#f59e0b;font-size:12px;";

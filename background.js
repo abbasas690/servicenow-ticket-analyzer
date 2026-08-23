@@ -2,7 +2,8 @@ importScripts(
   "lib/servicenow.js",
   "lib/querybuilder.js",
   "lib/statechoices.js",
-  "analysis/phase2.js"
+  "analysis/phase2.js",
+  "lib/cache.js"
 );
 
 chrome.sidePanel
@@ -268,14 +269,25 @@ async function runPull(msg) {
         continue;
       }
 
-      progress("phase1", `${label}: pulling ${total} tickets...`);
-      const records = await client.fetchAllRecords(
-        table, encodedQuery, msg.fields || DEFAULT_FIELDS,
-        p => {
-          progress("phase1", `${label}: phase1 ${p.fetched}/${total} tickets`);
-        },
-        abort.signal
-      );
+      let records;
+      let cachedEntry = null;
+      const cachedHit = await SnCache.getQuery(table, encodedQuery).catch(() => null);
+      if (SnCache.isFreshQuery(cachedHit)) {
+        records = cachedHit.records;
+        cachedEntry = cachedHit;
+        const ageMin = Math.max(1, Math.round((Date.now() - cachedHit.at) / 60000));
+        progress("phase1", `${label}: CACHE HIT — reused ${records.length} tickets from ${ageMin} min ago (no API calls)`);
+      } else {
+        progress("phase1", `${label}: pulling ${total} tickets...`);
+        records = await client.fetchAllRecords(
+          table, encodedQuery, msg.fields || DEFAULT_FIELDS,
+          p => {
+            progress("phase1", `${label}: phase1 ${p.fetched}/${total} tickets`);
+          },
+          abort.signal
+        );
+        await SnCache.putQuery(table, encodedQuery, records).catch(() => {});
+      }
       if (!byTable.has(table)) byTable.set(table, new Map());
       const bucket = byTable.get(table);
       let fresh = 0;
@@ -283,7 +295,7 @@ async function runPull(msg) {
         const id = r.sys_id?.value || r.sys_id;
         if (id && !bucket.has(id)) { bucket.set(id, r); fresh++; }
       }
-      runEntries.push({ table, query: encodedQuery, pulled: records.length, new: fresh });
+      runEntries.push({ table, query: encodedQuery, pulled: records.length, new: fresh, cached: !!cachedEntry, cacheAt: cachedEntry?.at || null });
     }
 
     let allRows = [];
@@ -298,13 +310,38 @@ async function runPull(msg) {
       const sysIds = records.map(r => r.sys_id?.value || r.sys_id).filter(Boolean);
 
       progress("phase2", `Phase 2 (${tLabel}): activity feed for ${sysIds.length} tickets...`);
-      const eventsByTicket = await client.fetchTimelineEvents(
-        sysIds,
-        ["assignment_group", "assigned_to", "state"],
-        p => progress("phase2", `Phase 2 (${tLabel}): activity ticket ${p.ticketsDone}/${p.ticketsTotal}`),
-        abort.signal,
-        table
-      );
+      const updatedOnById = new Map(records.map(r => [r.sys_id?.value || r.sys_id, r.sys_updated_on?.value || r.sys_updated_on || ""]));
+      const eventsByTicket = {};
+      const needFetch = [];
+      try {
+        const cachedTl = await SnCache.getTimelines(table, sysIds);
+        for (const id of sysIds) {
+          const e = cachedTl.get(id);
+          if (!SnCache.timelineNeedsFetch(e, updatedOnById.get(id))) {
+            if (e.events.length) eventsByTicket[id] = e.events;
+          } else {
+            needFetch.push(id);
+          }
+        }
+        if (sysIds.length - needFetch.length > 0) {
+          progress("phase2", `Phase 2 (${tLabel}): ${sysIds.length - needFetch.length}/${sysIds.length} timelines reused from cache`);
+        }
+      } catch {}
+      if (needFetch.length) {
+        const fetched = await client.fetchTimelineEvents(
+          needFetch,
+          ["assignment_group", "assigned_to", "state"],
+          p => progress("phase2", `Phase 2 (${tLabel}): activity ticket ${p.ticketsDone}/${needFetch.length}`),
+          abort.signal,
+          table
+        );
+        Object.assign(eventsByTicket, fetched);
+        await SnCache.putTimelines(table, needFetch.map(id => ({
+          sysId: id,
+          updatedAt: updatedOnById.get(id) || "",
+          events: fetched[id] || []
+        }))).catch(() => {});
+      }
       auditCounts[table] = Object.keys(eventsByTicket).length;
       if (!sampleRecord) sampleRecord = records[0];
       if (!sampleAuditRows.length) {

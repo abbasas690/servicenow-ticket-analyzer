@@ -95,5 +95,14 @@ $("resetBtn").addEventListener("click", async () => {
   setStatus("Reset to defaults");
 });
 
+$("clearCacheBtn").addEventListener("click", async () => {
+  try {
+    await SnCache.clearAll();
+    setStatus("Pull cache cleared");
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+});
+
 
 chrome.storage.local.get(["pluginSettings"], ({ pluginSettings }) => fill(pluginSettings));

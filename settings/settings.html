@@ -66,6 +66,11 @@
       Log response data in panel log (debug)
     </label>
     <div class="hint">Adds a truncated body preview and row count for every API call to the log. Verbose — enable only while troubleshooting.</div>
+
+    <div class="btns" style="margin-top:10px;">
+      <button id="clearCacheBtn">Clear pull cache</button>
+      <span class="hint">Query results are reused for 15 min; timelines until the ticket changes (max 7 days).</span>
+    </div>
   </div>
 
   <div class="btns">
@@ -74,6 +79,7 @@
     <span id="status"></span>
   </div>
 
+  <script src="../lib/cache.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

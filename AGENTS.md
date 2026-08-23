@@ -154,6 +154,7 @@ while in queue, group re-entry takes latest, excludeClosed suppressed when state
 Regression-test the activity source chain and the activity text parser
 with `node tools/activity-client-test.js` and `node tools/activity-parse-test.js`.
 Regression-test the closure-note regex extractor with `node tools/ai-parse-test.js`.
+Regression-test the pull cache helpers with `node tools/cache-test.js`.
 
 Manual test loop (user performs): reload extension at `chrome://extensions`
 → refresh the ServiceNow tab → Connect → Preview count → Run export.
