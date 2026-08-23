@@ -1,34 +1,34 @@
 const $ = id => document.getElementById(id);
 
 const COLUMNS = [
-  ["number", "Number", "num"],
-  ["shortDescription", "Short description", ""],
-  ["assignedTo", "Assigned to", ""],
-  ["priority", "Priority", ""],
-  ["state", "State", ""],
-  ["assignmentGroup", "Group", ""],
-  ["configItem", "Configuration item", ""],
-  ["incidentState", "Incident state", ""],
-  ["createdOn", "Created", "time"],
-  ["assignTime", "Assign time", "inst"],
-  ["acknTime", "Ackn time", "inst"],
-  ["suspendTime", "Suspend time", "inst"],
-  ["resumeTime", "Resume time", "inst"],
-  ["resolvedAt", "Resolved", "time"],
-  ["solutionType", "Solution type", ""],
-  ["rootCause", "Root cause", ""],
-  ["rep:type", "Type", "rep"],
-  ["rep:incidentHours", "Incident hours", "rep"],
-  ["rep:incidentTotalAge", "Incident total age", "rep"],
-  ["rep:incCurrentHours", "Inc current hours (from ASG)", "rep"],
-  ["rep:incidentCurrentAge", "Incident current age", "rep"],
-  ["rep:responseSLA", "Response SLA", "rep"],
-  ["rep:cumulativeSla", "Cumulative SLA", "rep"],
-  ["rep:cumulativeDays", "Cumulative days", "rep"],
-  ["rep:metResponseSLA", "Met response SLA", "rep"],
-  ["rep:metMinResolutionSLA", "Met min resolution SLA", "rep"],
-  ["rep:metMaxResolutionSLA", "Met max resolution SLA", "rep"],
-  ["rep:analysedDate", "Analysed date", "rep"]
+  ["number", "Number", "num", 120],
+  ["shortDescription", "Short description", "", 260],
+  ["assignedTo", "Assigned to", "", 130],
+  ["priority", "Priority", "", 95],
+  ["state", "State", "", 105],
+  ["assignmentGroup", "Group", "", 140],
+  ["configItem", "Configuration item", "", 150],
+  ["incidentState", "Incident state", "", 110],
+  ["createdOn", "Created", "time", 155],
+  ["assignTime", "Assign time", "inst", 155],
+  ["acknTime", "Ackn time", "inst", 155],
+  ["suspendTime", "Suspend time", "inst", 155],
+  ["resumeTime", "Resume time", "inst", 155],
+  ["resolvedAt", "Resolved", "time", 155],
+  ["solutionType", "Solution type", "", 115],
+  ["rootCause", "Root cause", "", 230],
+  ["rep:type", "Type", "rep", 85],
+  ["rep:incidentHours", "Incident hours", "rep", 105],
+  ["rep:incidentTotalAge", "Incident total age", "rep", 120],
+  ["rep:incCurrentHours", "Inc current hours (from ASG)", "rep", 160],
+  ["rep:incidentCurrentAge", "Incident current age", "rep", 130],
+  ["rep:responseSLA", "Response SLA", "rep", 105],
+  ["rep:cumulativeSla", "Cumulative SLA", "rep", 110],
+  ["rep:cumulativeDays", "Cumulative days", "rep", 115],
+  ["rep:metResponseSLA", "Met response SLA", "rep", 120],
+  ["rep:metMinResolutionSLA", "Met min resolution SLA", "rep", 140],
+  ["rep:metMaxResolutionSLA", "Met max resolution SLA", "rep", 140],
+  ["rep:analysedDate", "Analysed date", "rep", 105]
 ];
 
 let data = null;
@@ -481,10 +481,20 @@ function TABLE_LABEL(t) {
 }
 
 function buildHead() {
-  const thead = $("tbl").tHead;
+  const table = $("tbl");
+  let colgroup = table.querySelector("colgroup");
+  if (!colgroup) {
+    colgroup = document.createElement("colgroup");
+    table.prepend(colgroup);
+  }
+  colgroup.innerHTML = "";
+  const thead = table.tHead;
   thead.innerHTML = "";
   const tr = document.createElement("tr");
-  for (const [key, label] of COLUMNS) {
+  for (const [key, label, , width] of COLUMNS) {
+    const col = document.createElement("col");
+    col.style.width = `${width || 130}px`;
+    colgroup.appendChild(col);
     const th = document.createElement("th");
     th.textContent = label;
     if (key === sortKey) th.classList.add("sorted", ...(sortDir === -1 ? ["desc"] : []));
@@ -674,6 +684,22 @@ function moveToCell(sysId, colIdx, delta) {
   if (!rt || ci < 0 || ci >= COLUMNS.length) return null;
   return rt.children[ci];
 }
+
+$("tbl").tBodies[0].addEventListener("click", e => {
+  const td = e.target.closest("td");
+  if (!td || td.classList.contains("editable")) return;
+  const tr = td.parentElement;
+  const row = data?.rows.find(r => String(r.sysId) === tr.dataset.sysId);
+  if (!row) return;
+  const idx = [...tr.children].indexOf(td);
+  const [key,, cls] = COLUMNS[idx];
+  if (!key) return;
+  const text = cellValue(row, key, cls);
+  if (!text) return;
+  navigator.clipboard.writeText(text)
+    .then(() => setStatus(`Copied: ${text.length > 60 ? text.slice(0, 60) + "…" : text}`))
+    .catch(err => setStatus(`Copy failed: ${err.message}`, true));
+});
 
 $("tbl").tBodies[0].addEventListener("dblclick", e => {
   const td = e.target.closest("td");
