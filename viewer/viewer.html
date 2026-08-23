@@ -44,6 +44,12 @@
     .hidden { display:none; }
     button.primary { background:#2563eb; color:#fff; }
     #status { color:#4ade80; font-size:12px; min-width:80px; }
+    #aiChip { display:inline-flex; align-items:center; gap:8px; background:#3b2f0b; border:1px solid #a16207;
+      color:#fde68a; font-size:12px; padding:4px 6px 4px 10px; border-radius:999px; white-space:nowrap; }
+    #aiChip.hidden { display:none; }
+    #aiStop { padding:2px 10px; font-size:11px; background:#b45309; color:#fff; border:none;
+      border-radius:999px; cursor:pointer; font-weight:600; }
+    #aiStop:hover { filter:brightness(1.15); }
     #tplState { color:var(--dim); font-size:11.5px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #tplState.has { color:#93c5fd; cursor:pointer; text-decoration:underline dotted; }
   </style>
@@ -57,6 +63,10 @@
     <input id="search" placeholder="Search number, state, group, assignee…">
     <span id="count"></span>
     <span id="status"></span>
+    <span id="aiChip" class="hidden">
+      <span id="aiChipText"></span>
+      <button id="aiStop" title="Stop the AI run — tickets already analyzed keep their results">Stop</button>
+    </span>
     <button id="exportBtn" class="primary">Export to template</button>
     <button id="aiBtn" title="Extract solution type + root cause from resolution notes with the local AI model (Shift+click to re-run all)">AI: extract</button>
     <span id="tplState" title="Pick / change the Excel template"></span>

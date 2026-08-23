@@ -40,6 +40,15 @@ function createAiClient() {
     });
   }
 
+  function killAll(reason) {
+    for (const p of pending.values()) p.reject(new Error(reason));
+    pending.clear();
+    if (worker) {
+      try { worker.terminate(); } catch {}
+      worker = null;
+    }
+  }
+
   return {
     ensure(modelId, onProgress) {
       return call({ type: "ensure", modelId }, onProgress);
@@ -47,12 +56,11 @@ function createAiClient() {
     extract(notes) {
       return call({ type: "extract", notes });
     },
+    stop(reason = "Stopped") {
+      if (worker) killAll(reason);
+    },
     dispose() {
-      if (!worker) return;
-      for (const p of pending.values()) p.reject(new Error("AI client disposed"));
-      pending.clear();
-      try { worker.terminate(); } catch {}
-      worker = null;
+      if (worker) killAll("AI client disposed");
     }
   };
 }

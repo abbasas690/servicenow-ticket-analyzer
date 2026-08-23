@@ -634,9 +634,16 @@ $("tbl").tBodies[0].addEventListener("dblclick", e => {
 $("search").addEventListener("input", render);
 
 let aiRunning = false;
+let aiActive = null;
+let aiStopped = false;
+
+function setAiChip(text) {
+  $("aiChipText").textContent = text;
+  setStatus(text);
+}
 
 async function runAiExtract(rerun) {
-  if (aiRunning) { setStatus("AI analysis already running", true); return; }
+  if (aiRunning) { setStatus("AI analysis already running — use the Stop button to cancel", true); return; }
   if (activeFinish) activeFinish(true);
   const targets = data.rows.filter(r =>
     (r.closeNotes || "").trim() &&
@@ -647,37 +654,63 @@ async function runAiExtract(rerun) {
       : "No tickets have resolution notes to analyze");
     return;
   }
-  const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
-  const modelId = pluginSettings?.ai?.modelId;
-  if (!modelId) throw new Error("No AI model selected — open Settings and download one");
-  const aiLog = detail =>
-    chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
   aiRunning = true;
+  aiStopped = false;
+  $("aiChip").classList.remove("hidden");
   const ai = AiClient.createAiClient();
-  const t0 = Date.now();
+  aiActive = ai;
   let done = 0;
+  let modelId = "";
   try {
-    await ai.ensure(modelId, p => setStatus(`AI download: ${p.file} ${p.percent}%`));
+    const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
+    modelId = pluginSettings?.ai?.modelId;
+    if (!modelId) throw new Error("No AI model selected — open Settings and download one");
+    setAiChip("AI: loading model…");
+    await ai.ensure(modelId, p => setAiChip(`AI download: ${p.file} ${p.percent}%`));
+    const aiLog = detail =>
+      chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
+    const t0 = Date.now();
     await aiLog(`AI extract started · model=${modelId.split("/")[1] || modelId} · ${targets.length} ticket(s)`);
     for (const row of targets) {
-      setStatus(`AI analyzing ${++done}/${targets.length}: ${row.number}`);
+      if (aiStopped) break;
+      setAiChip(`AI analyzing ${done + 1}/${targets.length}: ${row.number}`);
       const res = await ai.extract(row.closeNotes);
       row.solutionType = res.solutionType;
       row.rootCause = res.rootCause;
       render();
       await persistEdits();
+      done++;
       await aiLog(`AI ${done}/${targets.length} ${row.number}: ${res.solutionType || "unclassified"}${res.rootCause ? ` · ${res.rootCause.slice(0, 80)}` : ""}`);
     }
     const secs = Math.round((Date.now() - t0) / 1000);
-    setStatus(`AI done — ${targets.length} ticket(s) analyzed`);
-    await aiLog(`AI extract finished · ${targets.length} ticket(s) in ${secs}s`);
+    if (aiStopped) {
+      setStatus(`AI stopped — ${done} of ${targets.length} ticket(s) analyzed; results kept`);
+      await aiLog(`AI extract stopped by user after ${done}/${targets.length} ticket(s)`);
+    } else {
+      setStatus(`AI done — ${targets.length} ticket(s) analyzed`);
+      await aiLog(`AI extract finished · ${targets.length} ticket(s) in ${secs}s`);
+    }
   } catch (err) {
-    setStatus(`AI failed: ${err.message}`, true);
-    await aiLog(`AI extract failed after ${done}/${targets.length}: ${err.message}`);
+    if (aiStopped) {
+      setStatus(`AI stopped — ${done} of ${targets.length} ticket(s) analyzed; results kept`);
+    } else {
+      setStatus(`AI failed: ${err.message}`, true);
+      chrome.runtime.sendMessage({
+        type: "PROGRESS", stage: "diag",
+        detail: `AI extract failed after ${done}/${targets.length}: ${err.message}`
+      }).catch(() => {});
+    }
   } finally {
     ai.dispose();
+    aiActive = null;
     aiRunning = false;
+    $("aiChip").classList.add("hidden");
   }
 }
 
-$("aiBtn").addEventListener("click", e => runAiExtract(e.shiftKey));
+$("aiBtn").addEventListener("click", e => runAiExtract(e.shiftKey).catch(err => setStatus(err.message, true)));
+
+$("aiStop").addEventListener("click", () => {
+  aiStopped = true;
+  aiActive?.stop("Stopped by user");
+});
