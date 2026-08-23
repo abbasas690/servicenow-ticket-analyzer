@@ -155,6 +155,8 @@ function analyzeAll(records, auditByTicket, stateMap, queueCtx) {
       openedAtRaw: rawValue(rec.opened_at),
       closedAt: fieldValue(rec.closed_at),
       closedAtRaw: rawValue(rec.closed_at),
+      closeCode: fieldValue(rec.close_code),
+      closeNotes: fieldValue(rec.close_notes),
       assignTime: t.assignTime || "",
       acknTime: t.acknTime || "",
       suspendTime: t.suspendTime || "",

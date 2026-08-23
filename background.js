@@ -22,7 +22,8 @@ const DEFAULT_FIELDS = [
   "assignment_group", "assigned_to", "opened_at", "closed_at",
   "short_description", "caller_id", "category",
   "sys_updated_on", "sys_updated_by", "cmdb_ci",
-  "sys_created_on", "incident_state", "resolved_at"
+  "sys_created_on", "incident_state", "resolved_at",
+  "close_code", "close_notes"
 ];
 
 let running = false;

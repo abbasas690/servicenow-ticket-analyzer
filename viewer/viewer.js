@@ -14,7 +14,9 @@ const COLUMNS = [
   ["acknTime", "Ackn time", "inst"],
   ["suspendTime", "Suspend time", "inst"],
   ["resumeTime", "Resume time", "inst"],
-  ["resolvedAt", "Resolved", "time"]
+  ["resolvedAt", "Resolved", "time"],
+  ["solutionType", "Solution type", ""],
+  ["rootCause", "Root cause", ""]
 ];
 
 let data = null;
@@ -58,7 +60,9 @@ const TPL_COLUMNS = [
   { col: 13, get: r => fmtInstant(r.acknTime, r) },
   { col: 14, get: r => r.resolvedAt },
   { col: 15, get: r => fmtInstant(r.suspendTime, r) },
-  { col: 16, get: r => fmtInstant(r.resumeTime, r) }
+  { col: 16, get: r => fmtInstant(r.resumeTime, r) },
+  { col: 17, get: r => r.solutionType },
+  { col: 18, get: r => r.rootCause }
 ];
 
 let tplInfo = null;
@@ -259,7 +263,7 @@ function buildDataRowsXml(rows, startRow, styleMap) {
 function patchSheetXml(sheetXml, sharedStrings, dataRowsXml, startRow, lastDataRow) {
   const dimRe = /(<dimension ref=")([^"]*)(")/;
   if (dimRe.test(sheetXml)) {
-    sheetXml = sheetXml.replace(dimRe, `$1A1:P${lastDataRow}$3`);
+    sheetXml = sheetXml.replace(dimRe, `$1A1:R${lastDataRow}$3`);
   }
   const sdOpen = sheetXml.search(/<sheetData\s*\/>/);
   if (sdOpen !== -1) {
@@ -628,3 +632,66 @@ $("tbl").tBodies[0].addEventListener("dblclick", e => {
 });
 
 $("search").addEventListener("input", render);
+
+let aiPipe = null;
+let aiPipeModel = null;
+let aiRunning = false;
+
+async function ensureAiPipeline() {
+  const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
+  const modelId = pluginSettings?.ai?.modelId;
+  if (!modelId) throw new Error("No AI model selected — open Settings and download one");
+  if (aiPipe && aiPipeModel === modelId) return aiPipe;
+  setStatus("Loading AI runtime…");
+  const T = await import("../lib/vendor/transformers.min.js");
+  T.env.backends.onnx.wasm.numThreads = 1;
+  let lastFile = "";
+  aiPipe = await T.pipeline("text-generation", modelId, {
+    dtype: "q4f16",
+    progress_callback: p => {
+      if (p.status === "progress" && p.file !== lastFile) {
+        lastFile = p.file;
+        setStatus(`AI download: ${p.file} ${Math.round((p.progress || 0))}%`);
+      }
+    }
+  });
+  aiPipeModel = modelId;
+  return aiPipe;
+}
+
+async function runAiExtract(rerun) {
+  if (aiRunning) { setStatus("AI analysis already running", true); return; }
+  if (activeFinish) activeFinish(true);
+  const targets = data.rows.filter(r =>
+    (r.closeNotes || "").trim() &&
+    (rerun || !(r.solutionType || r.rootCause)));
+  if (!targets.length) {
+    setStatus(data.rows.some(r => (r.closeNotes || "").trim())
+      ? "All closure notes already analyzed — use Shift+click to re-run"
+      : "No tickets have resolution notes to analyze");
+    return;
+  }
+  aiRunning = true;
+  try {
+    const pipe = await ensureAiPipeline();
+    let done = 0;
+    for (const row of targets) {
+      setStatus(`AI analyzing ${++done}/${targets.length}: ${row.number}`);
+      const messages = AiExtract.buildClosurePrompt(row.closeNotes);
+      const out = await pipe(messages, { max_new_tokens: 120, do_sample: false });
+      const text = out[0]?.generated_text?.at(-1)?.content || "";
+      const parsed = AiExtract.parseClosureJson(text);
+      row.solutionType = parsed.solutionType;
+      row.rootCause = parsed.rootCause;
+      render();
+      await persistEdits();
+    }
+    setStatus(`AI done — ${targets.length} ticket(s) analyzed`);
+  } catch (err) {
+    setStatus(`AI failed: ${err.message}`, true);
+  } finally {
+    aiRunning = false;
+  }
+}
+
+$("aiBtn").addEventListener("click", e => runAiExtract(e.shiftKey));

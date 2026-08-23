@@ -71,7 +71,8 @@ function buildWorkbook(rows, groupName) {
   const ticketSheet = XLSX.utils.json_to_sheet(sheetRows, {
     header: ["number", "shortDescription", "assignedTo", "priority", "state", "assignmentGroup",
       "configItem", "incidentState", "createdOn",
-      "assignTime", "acknTime", "suspendTime", "resumeTime", "resolvedAt"]
+      "assignTime", "acknTime", "suspendTime", "resumeTime", "resolvedAt",
+      "solutionType", "rootCause"]
   });
   XLSX.utils.book_append_sheet(wb, ticketSheet, "Tickets");
 

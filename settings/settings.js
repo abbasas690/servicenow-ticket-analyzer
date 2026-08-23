@@ -11,6 +11,9 @@ const DEFAULTS = {
   params: {
     tablePageSize: 1000,
     debugResponses: false
+  },
+  ai: {
+    modelId: ""
   }
 };
 
@@ -46,6 +49,9 @@ function collect() {
     params: {
       tablePageSize: clampInt($("tablePageSize").value, 100, 5000, DEFAULTS.params.tablePageSize),
       debugResponses: !!$("debugResponses").checked
+    },
+    ai: {
+      modelId: $("aiModel").value
     }
   };
 }
@@ -63,6 +69,7 @@ function fill(s) {
       }
     }
     if (s.params && typeof s.params === "object") Object.assign(merged.params, s.params);
+    if (s.ai && typeof s.ai === "object") Object.assign(merged.ai, s.ai);
   }
   $("instanceUrl").value = merged.instanceUrl;
   $("ticketType").value = TICKET_TYPES.includes(merged.defaults.ticketType) ? merged.defaults.ticketType : "incident";
@@ -70,6 +77,9 @@ function fill(s) {
   $("teamMembers").value = formatNames(merged.defaults.teamMembers);
   $("tablePageSize").value = merged.params.tablePageSize;
   $("debugResponses").checked = !!merged.params.debugResponses;
+  if ([...$("aiModel").options].some(o => o.value === merged.ai.modelId)) {
+    $("aiModel").value = merged.ai.modelId;
+  }
 }
 
 function setCardStatus(id, text, isError = false) {
@@ -100,6 +110,48 @@ $("resetBtn").addEventListener("click", async () => {
   fill(null);
   await chrome.storage.local.set({ pluginSettings: collect() });
   setStatus("Reset to defaults");
+});
+
+for (const m of AiExtract.AI_MODELS) {
+  const opt = document.createElement("option");
+  opt.value = m.id;
+  opt.textContent = m.label;
+  $("aiModel").appendChild(opt);
+}
+
+let aiDownloading = false;
+
+$("aiDownloadBtn").addEventListener("click", async () => {
+  if (aiDownloading) return;
+  const modelId = $("aiModel").value;
+  if (!modelId) { setCardStatus("aiStatus", "Pick a model first", true); return; }
+  aiDownloading = true;
+  const el = $("aiStatus");
+  try {
+    el.style.color = "#b9c2d4";
+    el.textContent = "Loading runtime…";
+    const T = await import("../lib/vendor/transformers.min.js");
+    T.env.backends.onnx.wasm.numThreads = 1;
+    let lastFile = "";
+    await T.pipeline("text-generation", modelId, {
+      dtype: "q4f16",
+      progress_callback: p => {
+        if (p.status === "progress" && p.file) {
+          if (p.file !== lastFile) { lastFile = p.file; }
+          el.textContent = `${p.file} ${Math.round(p.progress || 0)}%`;
+        }
+      }
+    });
+    el.style.color = "#4ade80";
+    el.textContent = "Model ready (cached for offline use)";
+    await chrome.storage.local.set({ pluginSettings: collect() });
+    setStatus(`Saved — AI model ${modelId.split("/")[1] || modelId}`);
+  } catch (err) {
+    el.style.color = "#f87171";
+    el.textContent = `Download failed: ${err.message}`;
+  } finally {
+    aiDownloading = false;
+  }
 });
 
 chrome.storage.local.get(["pluginSettings"], ({ pluginSettings }) => fill(pluginSettings));

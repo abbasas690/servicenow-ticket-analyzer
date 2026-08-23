@@ -58,6 +58,7 @@
     <span id="count"></span>
     <span id="status"></span>
     <button id="exportBtn" class="primary">Export to template</button>
+    <button id="aiBtn" title="Extract solution type + root cause from resolution notes with the local AI model (Shift+click to re-run all)">AI: extract</button>
     <span id="tplState" title="Pick / change the Excel template"></span>
     <input type="file" id="tplFile" accept=".xlsx" class="hidden">
     <button id="reloadBtn">Refresh</button>
@@ -74,6 +75,7 @@
   <script src="../lib/xlsx.full.min.js"></script>
   <script src="../lib/vendor/fflate.min.js"></script>
   <script src="../analysis/workbook.js"></script>
+  <script src="../analysis/aiextract.js"></script>
   <script src="viewer.js"></script>
 </body>
 </html>

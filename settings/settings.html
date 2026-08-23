@@ -68,12 +68,24 @@
     <div class="hint">Adds a truncated body preview and row count for every API call to the log. Verbose — enable only while troubleshooting.</div>
   </div>
 
+  <div class="card">
+    <h2 style="font-size:14px;margin:0 0 4px;color:#7ab8f5">AI model (local)</h2>
+    <label>Model</label>
+    <select id="aiModel"></select>
+    <div class="hint">Runs fully offline inside the browser after download — ticket notes never leave your machine. Used by "AI: extract" in the data view to classify solution type and summarize root cause from resolution notes.</div>
+    <div class="btns">
+      <button id="aiDownloadBtn">Download model</button>
+      <span id="aiStatus" class="hint"></span>
+    </div>
+  </div>
+
   <div class="btns">
     <button id="saveBtn" class="primary">Save</button>
     <button id="resetBtn" class="danger">Reset</button>
     <span id="status"></span>
   </div>
 
+  <script src="../analysis/aiextract.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>
