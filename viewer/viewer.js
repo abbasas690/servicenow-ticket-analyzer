@@ -709,6 +709,7 @@ $("tbl").tBodies[0].addEventListener("dblclick", e => {
 $("search").addEventListener("input", render);
 
 function autoParse() {
+  if (!data || !Array.isArray(data.rows)) return 0;
   let filled = 0;
   for (const row of data.rows) {
     if (!(row.closeNotes || "").trim()) continue;
