@@ -83,6 +83,13 @@ function extractTimelines(auditRows, ctx) {
   }
 
   delete result._suspendEpoch;
+  const bornAt = parseUtc(ctx.openedAt);
+  if (Number.isFinite(bornAt)) {
+    const a = parseUtc(result.assignTime);
+    if (Number.isFinite(a) && a < bornAt) {
+      result.assignTime = new Date(bornAt).toISOString();
+    }
+  }
   return result;
 }
 

@@ -69,6 +69,8 @@ Computed in `extractTimelines()` from `sys_audit` rows (`assignment_group`,
    Born-in-queue fallback: if NO group-change events exist but the ticket's
    CURRENT group == queue, assignTime = opened_at (covers auto-routed tickets
    whose group was set at creation; inserts produce no audit rows).
+   assignTime is CLAMPED to never precede opened_at (backdated demo audits);
+   the clamp does not affect ackn eligibility, which stays event-based.
    Each ticket is measured against ITS OWN current group
    (ctx.queueSysId = snapshotGroupId), and ackn checks membership of that
    queue's member set. Member sets are the flat configured team-member sys_id
@@ -134,7 +136,8 @@ attach to `self` — testable in plain node, e.g.:
 const { extractTimelines } = require('./analysis/phase2.js');
 ```
 
-Regression-test any change to timeline rules or query building against these cases:
+Regression-test any change to timeline rules or query building with
+`node tools/phase2-unit-test.js` (exits non-zero on failure) against these cases:
 pre-queue ackn ignored, first-On-Hold wins, direct-resolve fallback, suspend only
 while in queue, group re-entry takes latest, excludeClosed suppressed when states picked.
 
