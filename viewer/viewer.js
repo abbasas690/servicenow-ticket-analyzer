@@ -483,19 +483,10 @@ function TABLE_LABEL(t) {
 
 function buildHead() {
   const table = $("tbl");
-  let colgroup = table.querySelector("colgroup");
-  if (!colgroup) {
-    colgroup = document.createElement("colgroup");
-    table.prepend(colgroup);
-  }
-  colgroup.innerHTML = "";
   const thead = table.tHead;
   thead.innerHTML = "";
   const tr = document.createElement("tr");
-  for (const [key, label, , width] of COLUMNS) {
-    const col = document.createElement("col");
-    col.style.width = `${width || 130}px`;
-    colgroup.appendChild(col);
+  for (const [key, label] of COLUMNS) {
     const th = document.createElement("th");
     th.textContent = label;
     if (key === sortKey) th.classList.add("sorted", ...(sortDir === -1 ? ["desc"] : []));
