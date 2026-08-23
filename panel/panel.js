@@ -594,6 +594,7 @@ async function openViewer() {
       const tab = tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
       await chrome.tabs.update(tab.id, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
+      chrome.runtime.sendMessage({ type: "DATA_UPDATED" }).catch(() => {});
       return;
     }
   } catch {}

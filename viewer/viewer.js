@@ -24,8 +24,6 @@ let sortKey = null;
 let sortDir = 1;
 
 chrome.storage.local.get(["lastData"], ({ lastData }) => load(lastData));
-$("reloadBtn").addEventListener("click", () => {
-chrome.storage.local.get(["lastData"], ({ lastData }) => load(lastData));
 loadTplInfo();
 });
 
