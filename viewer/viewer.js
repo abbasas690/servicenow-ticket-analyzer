@@ -679,9 +679,18 @@ function moveToCell(sysId, colIdx, delta) {
   return rt.children[ci];
 }
 
+function cellValue(row, key, cls) {
+  if (key.startsWith("rep:")) {
+    return String(Report.buildReport(row, fmtInstant)[key.slice(4)] ?? "");
+  }
+  let v = row[key];
+  if (cls === "inst") v = fmtInstant(v, row);
+  return v === null || v === undefined ? "" : String(v);
+}
+
 $("tbl").tBodies[0].addEventListener("click", e => {
   const td = e.target.closest("td");
-  if (!td || td.classList.contains("editable")) return;
+  if (!td || document.querySelector("td.edit-input input")) return;
   const tr = td.parentElement;
   const row = data?.rows.find(r => String(r.sysId) === tr.dataset.sysId);
   if (!row) return;
@@ -691,7 +700,13 @@ $("tbl").tBodies[0].addEventListener("click", e => {
   const text = cellValue(row, key, cls);
   if (!text) return;
   navigator.clipboard.writeText(text)
-    .then(() => setStatus(`Copied: ${text.length > 60 ? text.slice(0, 60) + "…" : text}`))
+    .then(() => {
+      setStatus(`Copied: ${text.length > 60 ? text.slice(0, 60) + "…" : text}`);
+      td.classList.remove("copied");
+      void td.offsetWidth;
+      td.classList.add("copied");
+      setTimeout(() => td.classList.remove("copied"), 850);
+    })
     .catch(err => setStatus(`Copy failed: ${err.message}`, true));
 });
 
