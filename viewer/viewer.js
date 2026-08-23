@@ -645,6 +645,7 @@ async function ensureAiPipeline() {
   setStatus("Loading AI runtime…");
   const T = await import("../lib/vendor/transformers.min.js");
   T.env.backends.onnx.wasm.numThreads = 1;
+  T.env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("lib/vendor/");
   let lastFile = "";
   aiPipe = await T.pipeline("text-generation", modelId, {
     dtype: "q4f16",
