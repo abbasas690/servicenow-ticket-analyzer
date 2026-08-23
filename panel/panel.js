@@ -161,14 +161,13 @@ function conditionsSummary(conds) {
 
 function describeFilterSet(f) {
   const bits = [TABLE_LABELS[f.table] || f.table];
-  if (f.memberSysIds?.length) bits.push(`${f.memberSysIds.length} member(s)`);
   const cs = conditionsSummary(f.conditions);
   if (cs) bits.push(cs);
   return bits.join(" · ");
 }
 
 function filterKey(f) {
-  return JSON.stringify([f.table, f.memberSysIds, f.conditions]);
+  return JSON.stringify([f.table, f.conditions]);
 }
 
 function renderFilterList() {
@@ -397,13 +396,12 @@ function requireInstance() {
 
 function currentFilters() {
   const missing = cfgMembers.filter(m => !m.sysId).map(m => m.name);
-  if (missing.length) log(`Team members without sys_id are skipped: ${missing.join(", ")}`, "error");
-    return {
-      table: els.ticketType.value,
-      memberSysIds: cfgMembers.filter(m => m.sysId).map(m => m.sysId),
-      conditions: collectConditions(),
-      rawQuery: els.rawQuery.value
-    };
+  if (missing.length) log(`Team members without sys_id are skipped (acknowledgement detection): ${missing.join(", ")}`, "error");
+  return {
+    table: els.ticketType.value,
+    conditions: collectConditions(),
+    rawQuery: els.rawQuery.value
+  };
 }
 
 function configuredGroups() {

@@ -57,7 +57,7 @@
     <h2 style="font-size:14px;margin:0 0 4px;color:#7ab8f5">Team members</h2>
     <label>Team members (one per line: Name | sys_id)</label>
     <textarea id="teamMembers" placeholder="Fred Luddy | 5137153cc611227c0183faa138383172&#10;ITIL User | 62826bf03710200044e0bfc8bcbe5df1"></textarea>
-    <div class="hint">Used as the assignee filter for pulls — leave empty to disable assignee filtering. Accepts user_name or full display name for Resolve.</div>
+    <div class="hint">Used ONLY to detect acknowledgement dates (when a ticket gets assigned to one of these people). Never filters pulls — leave empty to skip acknowledgement detection.</div>
     <div class="btns">
       <button id="resolveMembersBtn">Resolve missing sys_ids</button>
       <span id="membersStatus" class="hint"></span>

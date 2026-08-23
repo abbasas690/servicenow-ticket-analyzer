@@ -222,7 +222,8 @@ async function handleCount(msg) {
   const table = msg.filters?.table || "incident";
   const client = await makeClient(msg.instanceUrl);
   const groups = scopeGroups(msg);
-  const encodedQuery = buildEncodedQuery({ ...msg.filters, ...groupScopeOf(groups) });
+  const { memberSysIds: _drop, ...filters } = msg.filters || {};
+  const encodedQuery = buildEncodedQuery({ ...filters, ...groupScopeOf(groups) });
   const total = await client.count(table, encodedQuery);
   return { ok: true, total, encodedQuery };
 }
@@ -245,7 +246,17 @@ async function runPull(msg) {
     progress("resolve", `Queues (from settings): ${groups.map(g => g.name).join(", ")}`);
     const groupScope = groupScopeOf(groups);
 
-    const teamIds = [...new Set(sets.flatMap(s => Array.isArray(s.memberSysIds) ? s.memberSysIds : []))];
+    const settings = (await chrome.storage.local.get(["pluginSettings"])).pluginSettings;
+    const teamIds = [...new Set(
+      ((settings?.defaults?.teamMembers || []))
+        .map(m => (m && typeof m === "object" ? m.sysId : ""))
+        .filter(Boolean)
+    )];
+    if (!teamIds.length) {
+      progress("resolve", "No team members with sys_id — acknowledgement dates will stay empty");
+    } else {
+      progress("resolve", `${teamIds.length} team member(s) configured for acknowledgement detection`);
+    }
     const membersByQueue = Object.fromEntries(groups.map(g => [g.sysId, teamIds]));
 
     const byTable = new Map();
@@ -254,7 +265,8 @@ async function runPull(msg) {
       const set = sets[i];
       const table = set.table || "incident";
       const label = `Filter ${i + 1}/${sets.length}`;
-      const encodedQuery = buildEncodedQuery({ ...set, ...groupScope });
+      const { memberSysIds: _drop, ...rest } = set;
+      const encodedQuery = buildEncodedQuery({ ...rest, ...groupScope });
 
       progress("count", `${label}: counting...`);
       const total = await client.count(table, encodedQuery);
