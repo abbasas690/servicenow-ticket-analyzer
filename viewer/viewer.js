@@ -418,24 +418,12 @@ function load(d) {
   }
   $("meta").textContent =
     `${scope} · pulled ${data.at.slice(0, 16).replace("T", " ")}${missing}`;
-  if (data.debug) {
-    const d2 = data.debug;
-    if (d2.ticketsWithAudit === 0) {
-      const warn = document.createElement("div");
-      warn.style.cssText = "padding:6px 18px;color:#f59e0b;font-size:12px;";
-      warn.textContent =
-        "No timeline events found for any pulled ticket. Common causes: (1) the activity feed returned nothing - open a ticket's form in this instance's tab and check its Activity section renders field changes; (2) tickets were never updated through the platform; (3) list_history.do is blocked on this release. Timeline columns stay empty without feed events.";
-      $("meta").after(warn);
-    }
-    let dbg = document.getElementById("debugLine");
-    if (!dbg) {
-      dbg = document.createElement("div");
-      dbg.id = "debugLine";
-      dbg.style.cssText = "padding:4px 18px 8px;color:#6b7280;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-all;";
-      $("meta").after(dbg);
-    }
-    dbg.textContent =
-      `debug · ticketsWithAudit=${d2.ticketsWithAudit} · byTable=${JSON.stringify(d2.auditCountsByTable || {})} · sampleRecord=${JSON.stringify(d2.sampleRecord)} · sampleAudit=${JSON.stringify(d2.sampleAuditRowCounts)} · sampleTimelines=${JSON.stringify(d2.sampleTimelines || [])}`;
+  if (data.debug && data.debug.ticketsWithAudit === 0) {
+    const warn = document.createElement("div");
+    warn.style.cssText = "padding:6px 18px;color:#f59e0b;font-size:12px;";
+    warn.textContent =
+      "No timeline events found for any pulled ticket. Common causes: (1) the activity feed returned nothing - open a ticket's form in this instance's tab and check its Activity section renders field changes; (2) tickets were never updated through the platform; (3) list_history.do is blocked on this release. Timeline columns stay empty without feed events.";
+    $("meta").after(warn);
   }
   buildHead();
   render();
