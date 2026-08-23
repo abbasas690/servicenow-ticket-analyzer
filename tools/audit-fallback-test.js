@@ -111,6 +111,56 @@ const mkClient = (t, diags) => new ServiceNowClient("https://x.service-now.com",
   check("empty map returned", Object.keys(got).length === 0);
   check("final give-up note", diags5.some(d => d.kind === "warn" && /timelines will stay empty/.test(d.note || "")));
 
+  console.log("== timelineSource=history skips sys_audit entirely ==");
+  t = mkTransport(async url => ({
+    ok: true, status: 200, via: "mock", hadToken: true,
+    text: JSON.stringify({ result: url.includes("/sys_history_line") && url.includes("idIN")
+      ? [histRow("AAA", 1)] : [] })
+  }));
+  c = mkClient(t);
+  c.timelineSource = "history";
+  got = await c.fetchAudit(["AAA", "BBB"], FIELDS);
+  check("no sys_audit request made", !t.calls.some(u => u.includes("/sys_audit")));
+  check("history rows returned", got.AAA?.length === 1);
+
+  console.log("== timelineSource=activity uses only activity stream ==");
+  t = mkTransport(async url => ({
+    ok: true, status: 200, via: "mock", hadToken: true,
+    text: JSON.stringify({
+      result: { entries: [
+        { author: "x", text: "Assignment group changed from N to Q on 2026-08-23 06:06:43" },
+        { changes: [{ label: "Assigned to", old_value: "", new_value: "Ravi", timestamp: "2026-08-23 06:07:00" }] }
+      ] }
+    })
+  }));
+  const diagsA = [];
+  const progress = [];
+  c = mkClient(t, diagsA);
+  c.timelineSource = "activity";
+  got = await c.fetchAudit(["AAA", "BBB"], FIELDS, p => progress.push(p));
+  check("only activity-stream endpoint called", t.calls.every(u => u.includes("/api/now/v1/activity/stream")));
+  check("one call per ticket", t.calls.length === 2);
+  check("text + structured events parsed per ticket",
+    got.AAA.length === 2 && got.BBB.length === 2 &&
+    got.AAA.some(e => e.field === "assignment_group") &&
+    got.BBB.some(e => e.field === "assigned_to"));
+  check("progress reported", progress.length === 2);
+
+  console.log("== undated history lines dropped with warning ==");
+  t = mkTransport(async url => ({
+    ok: true, status: 200, via: "mock", hadToken: true,
+    text: JSON.stringify({
+      result: url.includes("/sys_history_line") && url.includes("idIN")
+        ? [histRow("AAA", 1), { id: "AAA", field: "state", new: "2", update_time: "", sys_created_on: "2027-01-01 00:00:00" }]
+        : []
+    })
+  }));
+  const diags6 = [];
+  c = mkClient(t, diags6);
+  got = await c.fetchAudit(["AAA"], FIELDS);
+  check("undated line excluded, dated kept", got.AAA.length === 1);
+  check("exclusion warning emitted", diags6.some(d => d.kind === "warn" && /lacked update_time/.test(d.note || "")));
+
   console.log("== normalizeAuditRefs ==");
   const pairs = [
     { name: "SN QA Queue Alpha", sysId: "Q1ID" },

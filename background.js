@@ -171,6 +171,9 @@ function makeClient(instanceUrl) {  const client = new ServiceNowClient(instance
       client.auditBatchSize = clamp(s.params.auditBatchSize, 10, 200) || client.auditBatchSize;
       client.pageSize = clamp(s.params.tablePageSize, 100, 5000) || client.pageSize;
       client.debugResponses = !!s.params.debugResponses;
+      const src = s.params.timelineSource;
+      if (src === "history" || src === "activity") client.timelineSource = src;
+      else client.timelineSource = "auto";
     }
     return client;
   });

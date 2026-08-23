@@ -11,11 +11,13 @@ const DEFAULTS = {
   params: {
     auditBatchSize: 80,
     tablePageSize: 1000,
+    timelineSource: "auto",
     debugResponses: false
   }
 };
 
 const TICKET_TYPES = ["incident", "change_request", "problem", "sc_req_item", "sc_task"];
+const TIMELINE_SOURCES = ["auto", "history", "activity"];
 
 function clampInt(v, lo, hi, fallback) {
   const n = Math.round(Number(v));
@@ -52,6 +54,7 @@ function collect() {
     params: {
       auditBatchSize: clampInt($("auditBatchSize").value, 10, 200, DEFAULTS.params.auditBatchSize),
       tablePageSize: clampInt($("tablePageSize").value, 100, 5000, DEFAULTS.params.tablePageSize),
+      timelineSource: TIMELINE_SOURCES.includes($("timelineSource").value) ? $("timelineSource").value : "auto",
       debugResponses: !!$("debugResponses").checked
     }
   };
@@ -77,6 +80,8 @@ function fill(s) {
   $("teamMembers").value = formatPairs(merged.defaults.teamMembers);
   $("auditBatchSize").value = merged.params.auditBatchSize;
   $("tablePageSize").value = merged.params.tablePageSize;
+  if (!TIMELINE_SOURCES.includes(merged.params.timelineSource)) merged.params.timelineSource = "auto";
+  $("timelineSource").value = merged.params.timelineSource;
   $("debugResponses").checked = !!merged.params.debugResponses;
 }
 

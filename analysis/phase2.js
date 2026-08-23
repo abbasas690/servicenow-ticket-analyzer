@@ -167,6 +167,116 @@ function analyzeAll(records, auditByTicket, stateMap, queueCtx, legacyMemberIds)
 
 const SYS_ID_RE = /^[0-9a-f]{32}$/i;
 
+const ACTIVITY_ANCHORS = [
+  { field: "assignment_group", labels: ["assignment group"] },
+  { field: "assigned_to", labels: ["assigned to"] },
+  { field: "state", labels: ["state", "incident state"] }
+];
+
+function pmHour(h, ap) {
+  if (/p/i.test(ap || "") && h < 12) return h + 12;
+  if (/a/i.test(ap || "") && h === 12) return 0;
+  return h;
+}
+
+function parseSnDisplayMs(s) {
+  const str = String(s || "").trim();
+  let m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?/);
+  if (!m) {
+    m = str.match(/^(\d{1,2})[-.](\d{1,2})[-.](\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?/);
+    if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], pmHour(+m[4], m[7]), +m[5], +(m[6] || 0));
+    m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?/);
+    if (m) return Date.UTC(+m[3], +m[1] - 1, +m[2], pmHour(+m[4], m[7]), +m[5], +(m[6] || 0));
+    const p = Date.parse(str);
+    return Number.isFinite(p) ? p : NaN;
+  }
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], pmHour(+m[4], m[7]), +m[5], +(m[6] || 0));
+}
+
+const ACTIVITY_DT_RE = /(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|\d{1,2}\/\d{1,2}\/\d{4})[ T](\d{1,2}:\d{2}(?::\d{2})?)\s*([AaPp][Mm])?/g;
+
+function scanSnDateTime(text) {
+  const re = new RegExp(ACTIVITY_DT_RE.source, "g");
+  let m;
+  while ((m = re.exec(String(text || ""))) !== null) {
+    const ms = parseSnDisplayMs(`${m[1]} ${m[2]}${m[3] ? " " + m[3] : ""}`);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  return "";
+}
+
+function cleanCapture(s) {
+  return String(s || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\\+/g, "")
+    .replace(/^["'\s]+|["'\s,.;]+$/g, "")
+    .trim();
+}
+
+function extractEventsFromActivity(entries) {
+  const out = [];
+  const seen = new Set();
+  for (const entry of entries || []) {
+    if (!entry || typeof entry !== "object") continue;
+
+    const changes = Array.isArray(entry.changes) ? entry.changes : null;
+    if (changes) {
+      for (const ch of changes) {
+        if (!ch || typeof ch !== "object") continue;
+        const label = String(ch.label ?? ch.field_label ?? "").toLowerCase();
+        const anchor = ACTIVITY_ANCHORS.find(a => a.labels.some(l => label === l));
+        if (!anchor) continue;
+        const at = scanSnDateTime(JSON.stringify(ch)) ||
+          scanSnDateTime(JSON.stringify(entry));
+        const ev = {
+          field: anchor.field,
+          oldValue: cleanCapture(ch.old_value ?? ch.old ?? ch.from ?? ""),
+          newValue: cleanCapture(ch.new_value ?? ch.new ?? ch.to ?? ""),
+          at
+        };
+        const key = `${ev.field}|${ev.oldValue}|${ev.newValue}|${ev.at}`;
+        if (ev.at && !seen.has(key)) {
+          seen.add(key);
+          out.push(ev);
+        }
+      }
+      continue;
+    }
+
+    const text = JSON.stringify(entry);
+    if (!text) continue;
+    const low = text.toLowerCase();
+    for (const anchor of ACTIVITY_ANCHORS) {
+      for (const label of anchor.labels) {
+        const idx = low.indexOf(label);
+        if (idx === -1) continue;
+        const window = text.slice(idx, idx + 200);
+        let m = window.match(new RegExp(
+          label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+          "[^a-z]{0,3}changed from (.+?) to (.+?)(?=\\s+on\\s+[\\d<\"]|<|,|\\}|$)",
+          "i"
+        ));
+        if (!m) continue;
+        const at = scanSnDateTime(window);
+        if (!at) break;
+        const ev = {
+          field: anchor.field,
+          oldValue: cleanCapture(m[1]),
+          newValue: cleanCapture(m[2]),
+          at
+        };
+        const key = `${ev.field}|${ev.oldValue}|${ev.newValue}|${ev.at}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(ev);
+        }
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 function normalizeAuditRefs(byTicket, refPairs) {
   const map = new Map();
   for (const p of refPairs || []) {
@@ -188,7 +298,8 @@ function normalizeAuditRefs(byTicket, refPairs) {
   return byTicket;
 }
 
-if (typeof self !== "undefined") self.Analysis = { extractTimelines, analyzeAll, normalizeAuditRefs };
+const G = typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : null;
+if (G) G.Analysis = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity };
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { extractTimelines, analyzeAll, normalizeAuditRefs };
+  module.exports = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity };
 }

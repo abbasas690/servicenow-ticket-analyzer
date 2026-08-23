@@ -73,6 +73,14 @@
     <input id="tablePageSize" type="number" min="100" max="5000">
     <div class="hint">Rows per Table API page during pulls (100–5000, default 1000).</div>
 
+    <label>Timeline source</label>
+    <select id="timelineSource">
+      <option value="auto">Auto (sys_audit first, history lines fallback)</option>
+      <option value="history">sys_history_line only</option>
+      <option value="activity">Activity feed text (experimental)</option>
+    </select>
+    <div class="hint">Where per-ticket timeline events come from. Auto tries sys_audit and falls back automatically. Activity feed parses the form's own change feed — English UI only.</div>
+
     <label style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       <input id="debugResponses" type="checkbox" style="width:auto;">
       Log response data in panel log (debug)
