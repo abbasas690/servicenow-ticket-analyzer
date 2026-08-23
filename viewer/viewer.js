@@ -483,6 +483,17 @@ function TABLE_LABEL(t) {
 
 function buildHead() {
   const table = $("tbl");
+  let colgroup = table.querySelector("colgroup");
+  if (!colgroup) {
+    colgroup = document.createElement("colgroup");
+    table.prepend(colgroup);
+  }
+  colgroup.innerHTML = "";
+  for (let i = 0; i < COLUMNS.length; i++) {
+    const col = document.createElement("col");
+    col.style.width = "170px";
+    colgroup.appendChild(col);
+  }
   const thead = table.tHead;
   thead.innerHTML = "";
   const tr = document.createElement("tr");
@@ -688,6 +699,24 @@ function cellValue(row, key, cls) {
   return v === null || v === undefined ? "" : String(v);
 }
 
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;left:-9999px;top:0;";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch {}
+    ta.remove();
+    ok ? resolve() : reject(new Error("copy blocked by browser"));
+  });
+}
+
 $("tbl").tBodies[0].addEventListener("click", e => {
   const td = e.target.closest("td");
   if (!td || document.querySelector("td.edit-input input")) return;
@@ -699,7 +728,7 @@ $("tbl").tBodies[0].addEventListener("click", e => {
   if (!key) return;
   const text = cellValue(row, key, cls);
   if (!text) return;
-  navigator.clipboard.writeText(text)
+  copyText(text)
     .then(() => {
       setStatus(`Copied: ${text.length > 60 ? text.slice(0, 60) + "…" : text}`);
       td.classList.remove("copied");
