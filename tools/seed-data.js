@@ -6,9 +6,38 @@ const TYPES = ["incident", "change_request", "problem", "sc_req_item", "sc_task"
 const args = process.argv.slice(2);
 const COUNT = Math.max(1, parseInt(args.find(a => /^--count=\d+$/.test(a))?.split("=")[1] || "2", 10));
 const CLEAN = args.includes("--clean");
+const MEMBERS_FILE = args.find(a => /^--members-file=.+/.test(a))?.split("=").slice(1).join("=");
 const INSTANCE = (args.find(a => a.startsWith("http")) || process.env.SEED_INSTANCE || "").replace(/\/+$/, "");
 const STEP_DELAY_MS = 1600;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fs = require("fs");
+
+function parsePairLine(line) {
+  const m = String(line).split(/\s*[|=]\s*/);
+  if (m.length >= 2 && m[0] && m[1]) return { name: m[0].trim(), sysId: m.slice(1).join(" ").trim() };
+  return null;
+}
+
+async function loadMembers() {
+  let text = "";
+  if (MEMBERS_FILE) {
+    text = fs.readFileSync(MEMBERS_FILE, "utf8");
+  } else {
+    console.log("\nPaste configured team members (one per line, \"Name | sys_id\" — same text as the plugin settings page).");
+    console.log("Finish with an empty line:");
+    const lines = [];
+    while (true) {
+      const line = await question("> ");
+      if (!line) break;
+      lines.push(line);
+    }
+    text = lines.join("\n");
+  }
+  const members = String(text).split("\n").map(parsePairLine).filter(Boolean);
+  if (!members.length) return [];
+  console.log(`Using ${members.length} configured member(s): ${members.map(m => m.name).join(", ")}`);
+  return members;
+}
 
 function question(prompt) {
   return new Promise(resolve => {
@@ -76,10 +105,15 @@ async function main() {
     await clean(api, TYPES, "[SEED");
     console.log("");
 
+    const members = await loadMembers();
+    if (!members.length) {
+      console.log("No configured members given — falling back to the group's first sys_user_grmember roster entry (acknowledgement dates will NOT match your plugin team list).");
+    }
+
     const results = [];
     for (const table of TYPES) {
       try {
-        const created = await seedType(api, table, group.sys_id, COUNT, marker);
+        const created = await seedType(api, table, group.sys_id, COUNT, marker, members);
         results.push({ table, ok: true, created });
       } catch (err) {
         results.push({ table, ok: false, error: err.message });
@@ -117,7 +151,7 @@ async function fetchStateChoices(api, table) {
 
 const TABLE_PLAN_CAPS = { change_request: ["-4"] };
 
-async function seedType(api, table, groupSysId, count, marker) {
+async function seedType(api, table, groupSysId, count, marker, members) {
   const choices = await fetchStateChoices(api, table);
   const findLabel = pred => choices.find(c => pred(c.label.toLowerCase()));
 
@@ -180,8 +214,23 @@ async function seedType(api, table, groupSysId, count, marker) {
         console.log(`    -> assignment_group set`);
         await sleep(STEP_DELAY_MS);
       }
-      await api("PATCH", `/api/now/table/${table}/${sysId}`, {}, { assigned_to: await firstGroupMember(api, groupSysId) });
-      console.log(`    -> assigned_to set`);
+      let assignee = null;
+      if (members.length) {
+        assignee = members[i % members.length].sysId;
+      } else {
+        try {
+          assignee = await firstGroupMember(api, groupSysId);
+        } catch (err) {
+          console.log(`    roster fallback failed: ${err.message.slice(0, 120)}`);
+        }
+      }
+      if (assignee) {
+        await api("PATCH", `/api/now/table/${table}/${sysId}`, {}, { assigned_to: assignee });
+        const who = members.length ? members[i % members.length].name : assignee;
+        console.log(`    -> assigned_to ${who}`);
+      } else {
+        console.log(`    -> no assignee available, skipped`);
+      }
     } catch (err) {
       console.log(`    assign failed: ${err.message.slice(0, 120)}`);
     }
