@@ -588,16 +588,20 @@ $("viewBtn").addEventListener("click", () => {
 
 async function openViewer() {
   const url = chrome.runtime.getURL("viewer/viewer.html");
+  let tabs = [];
   try {
-    const tabs = await chrome.tabs.query({ url: `${url}*` });
-    if (tabs.length) {
-      const tab = tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+    tabs = await chrome.tabs.query({});
+  } catch {}
+  const viewTabs = tabs.filter(t => (t.url || "").startsWith(url));
+  if (viewTabs.length) {
+    const tab = viewTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+    try {
       await chrome.tabs.update(tab.id, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
-      chrome.runtime.sendMessage({ type: "DATA_UPDATED" }).catch(() => {});
-      return;
-    }
-  } catch {}
+    } catch {}
+    chrome.runtime.sendMessage({ type: "DATA_UPDATED" }).catch(() => {});
+    return;
+  }
   chrome.tabs.create({ url });
 }
 
