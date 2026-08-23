@@ -138,6 +138,10 @@ function makeClient(instanceUrl) {  const client = new ServiceNowClient(instance
     onDiagnostic: d => {
       const ms = typeof d.ms === "number" ? ` · ${d.ms}ms` : "";
       if (d.kind === "warn") {
+        if (d.note) {
+          progress("diag", `${d.path || "audit"} ⚠ ${d.note}`);
+          return;
+        }
         const why = d.netError ? `network: ${d.netError}` : `server ${d.status}`;
         progress("diag", `${d.path} ✕ ${why} · retrying (${d.attempt}/${4})${ms} · q=${d.query || ""}`);
         return;
@@ -309,7 +313,9 @@ async function runPull(msg) {
       const auditByTicket = await client.fetchAudit(
         sysIds,
         ["assignment_group", "assigned_to", "state"],
-        p => progress("phase2", `Phase 2 (${tLabel}): batch ${p.batchesDone}/${p.batchesTotal}`),
+        p => progress("phase2", p.ticketsTotal != null
+          ? `Phase 2 (${tLabel}): audit ticket ${p.ticketsDone}/${p.ticketsTotal}`
+          : `Phase 2 (${tLabel}): batch ${p.batchesDone}/${p.batchesTotal}`),
         abort.signal,
         table
       );
