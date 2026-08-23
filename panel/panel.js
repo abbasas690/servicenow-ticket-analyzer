@@ -23,8 +23,14 @@ const TABLE_LABELS = {
   sc_task: "Catalog Task (SCTASK)"
 };
 
-let choices = { states: [], priorities: [], incidentStates: [] };
 let busy = false;
+
+function choiceList(key) {
+  if (key === "states") return snStateChoices(els.ticketType.value);
+  if (key === "incidentStates") return snStateChoices("incident");
+  if (key === "priorities") return SN_PRIORITY_CHOICES;
+  return [];
+}
 
 const COND_FIELDS = [
   { key: "assignedTo", label: "Assigned to", field: "assigned_to", type: "ref" },
@@ -42,20 +48,23 @@ const COND_FIELDS = [
 
 let cfgQueues = [];
 let cfgMembers = [];
-let teamResolved = [];
+
+const toEntry = m => {
+  if (typeof m === "string") return { name: m, sysId: "" };
+  if (m && typeof m === "object" && m.name) return { name: String(m.name), sysId: String(m.sysId || "") };
+  return null;
+};
 
 function legacySnGroupQueues() {
   try {
     const raw = localStorage.getItem("snGroup");
     if (!raw) return [];
     const p = JSON.parse(raw);
-    if (Array.isArray(p)) return p.filter(Boolean);
-    if (p) return [String(p)];
+    const arr = Array.isArray(p) ? p : [p];
+    return arr.filter(Boolean).map(v => ({ name: String(v), sysId: "" }));
   } catch {
-    const r = localStorage.getItem("snGroup");
-    if (r) return [r];
+    return [];
   }
-  return [];
 }
 
 async function applyPluginSettings() {
@@ -65,11 +74,14 @@ async function applyPluginSettings() {
     if (s.defaults?.ticketType && [...els.ticketType.options].some(o => o.value === s.defaults.ticketType)) {
       els.ticketType.value = s.defaults.ticketType;
     }
-    cfgQueues = Array.isArray(s.defaults?.queues) && s.defaults.queues.length
+    const rawQueues = Array.isArray(s.defaults?.queues) && s.defaults.queues.length
       ? s.defaults.queues
-      : (s.defaults?.queueName ? [s.defaults.queueName] : legacySnGroupQueues());
-    cfgMembers = Array.isArray(s.defaults?.teamMembers) ? s.defaults.teamMembers : [];
+      : (s.defaults?.queueName ? [{ name: s.defaults.queueName, sysId: "" }] : legacySnGroupQueues());
+    cfgQueues = rawQueues.map(toEntry).filter(Boolean);
+    cfgMembers = (Array.isArray(s.defaults?.teamMembers) ? s.defaults.teamMembers : [])
+      .map(toEntry).filter(Boolean);
   }
+  renderCondRows();
   refreshGenerated();
 }
 
@@ -132,7 +144,7 @@ function conditionText(c) {
   if (c.oper === "isEmpty" || c.oper === "isNotEmpty") return `${label} ${op}`;
   let val = String(c.value ?? "");
   if (def?.type === "choice") {
-    const hit = (choices[def.choicesKey] || []).find(v => String(v.value) === val);
+    const hit = choiceList(def.choicesKey).find(v => String(v.value) === val);
     if (hit) val = hit.label;
   }
   if (c.oper === "between") return `${label} between ${val} and ${c.value2}`;
@@ -302,7 +314,7 @@ function renderCondRows() {
       if (def.type === "choice") {
         const valSel = document.createElement("select");
         valSel.className = "cval";
-        const list = choices[def.choicesKey] || [];
+        const list = choiceList(def.choicesKey);
         for (const c of list) {
           const o = document.createElement("option");
           o.value = String(c.value); o.textContent = c.label;
@@ -385,17 +397,21 @@ function requireInstance() {
 }
 
 function currentFilters() {
+  const missing = cfgMembers.filter(m => !m.sysId).map(m => m.name);
+  if (missing.length) log(`Team members without sys_id are skipped: ${missing.join(", ")}`, "error");
   return {
     table: els.ticketType.value,
-    memberSysIds: teamResolved.map(m => m.sysId),
+    memberSysIds: cfgMembers.filter(m => m.sysId).map(m => m.sysId),
     conditions: collectConditions(),
     onlyMyQueue: els.onlyMyQueue.checked,
     rawQuery: els.rawQuery.value
   };
 }
 
-function groupNames() {
-  if (!cfgQueues.length) throw new Error("No queues configured — open Settings and add assignment groups");
+function configuredGroups() {
+  if (!cfgQueues.length) throw new Error("No queues configured — open Settings and add assignment groups as \"Name | sys_id\"");
+  const missing = cfgQueues.filter(q => !q.sysId);
+  if (missing.length) throw new Error(`Queues without sys_id (open Settings to fix): ${missing.map(q => q.name).join(", ")}`);
   return cfgQueues;
 }
 
@@ -469,49 +485,26 @@ async function connect() {
   try {
     const url = requireInstance();
     els.connect.disabled = true;
-    els.connState.textContent = "Connecting…";
+    els.connState.textContent = "Checking…";
     els.connState.classList.remove("on");
-    const res = await send({ type: "CHOICES", instanceUrl: url, table: els.ticketType.value });
-    if (!res.ok) throw new Error(res.error);
-    choices = {
-      states: res.states || [],
-      priorities: res.priorities || [],
-      incidentStates: res.incidentStates || []
-    };
-    renderCondRows();
-    els.connState.textContent = "Connected";
+    const groups = configuredGroups();
+    const members = cfgMembers.filter(m => m.sysId);
+    els.connState.textContent = `Ready · ${groups.length} queue${groups.length > 1 ? "s" : ""}`;
     els.connState.classList.add("on");
-    log(`Loaded ${choices.states.length} states, ${choices.priorities.length} priorities for ${TABLE_LABELS[els.ticketType.value] || els.ticketType.value}`, "success");
+    log(
+      `Ready (no setup server calls): ${groups.length} queue(s), ${members.length} team member(s) from settings` +
+      (cfgMembers.length > members.length ? ` · ${cfgMembers.length - members.length} member(s) missing sys_id` : ""),
+      "success"
+    );
     savePrefs();
-    await resolveTeamMembers(url);
+    refreshGenerated();
   } catch (err) {
-    els.connState.textContent = "Not connected";
+    els.connState.textContent = "Not ready";
     els.connState.classList.remove("on");
     log(err.message, "error");
   } finally {
     els.connect.disabled = false;
   }
-}
-
-async function resolveTeamMembers(url) {
-  teamResolved = [];
-  if (!cfgMembers.length) {
-    refreshGenerated();
-    return;
-  }
-  try {
-    const resp = await send({ type: "USERS", instanceUrl: url, names: cfgMembers });
-    if (resp?.ok) {
-      teamResolved = resp.users || [];
-      const found = new Set(teamResolved.map(u => u.name));
-      const missing = cfgMembers.filter(n => !found.has(n));
-      if (missing.length) log(`Team members not found on instance: ${missing.join(", ")}`, "error");
-    } else if (resp?.error) {
-      log(`Member lookup failed: ${resp.error}`, "error");
-    }
-  } catch {}
-  refreshGenerated();
-  if (teamResolved.length) log(`Assignee filter: ${teamResolved.length} team member(s) from settings`, "success");
 }
 
 function refreshGenerated() {
@@ -530,14 +523,14 @@ function refreshGenerated() {
   );
 });
 els.rawQuery.addEventListener("input", refreshGenerated);
-els.ticketType.addEventListener("change", async () => {
+els.ticketType.addEventListener("change", () => {
   renderCondRows();
-  if (els.connState.classList.contains("on")) connect();
+  refreshGenerated();
 });
 
 els.connect.addEventListener("click", connect);
 els.instance.addEventListener("change", () => {
-  els.connState.textContent = "Not connected";
+  els.connState.textContent = "Not ready";
   els.connState.classList.remove("on");
 });
 
@@ -560,7 +553,7 @@ els.preview.addEventListener("click", async () => {
     const res = await send({
       type: "COUNT",
       instanceUrl: requireInstance(),
-      groupNames: groupNames(),
+      groups: configuredGroups(),
       filters: currentFilters()
     });
     if (res.ok) {
@@ -586,7 +579,7 @@ els.runBtn.addEventListener("click", async () => {
     await send({
       type: "RUN",
       instanceUrl: requireInstance(),
-      groupNames: groupNames(),
+      groups: configuredGroups(),
       filters: sets[0],
       filterSets: sets
     });

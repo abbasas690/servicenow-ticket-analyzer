@@ -44,16 +44,24 @@
 
   <div class="card">
     <h2 style="font-size:14px;margin:0 0 4px;color:#7ab8f5">Queues</h2>
-    <label>Queues (assignment groups, one per line)</label>
-    <textarea id="queues" placeholder="SN QA Queue Alpha&#10;SN QA Queue Beta"></textarea>
-    <div class="hint">Every pull is scoped to these assignment groups. Names must match ServiceNow exactly.</div>
+    <label>Queues (one per line: Name | sys_id)</label>
+    <textarea id="queues" placeholder="SN QA Queue Alpha | 0123456789abcdef0123456789abcdef&#10;SN QA Queue Beta | fedcba9876543210fedcba9876543210"></textarea>
+    <div class="hint">Every pull is scoped to these assignment groups. Fill sys_ids by hand (from each group record URL), or use Resolve — that queries the instance and needs an open ServiceNow tab plus read access to groups.</div>
+    <div class="btns">
+      <button id="resolveQueuesBtn">Resolve missing sys_ids</button>
+      <span id="queuesStatus" class="hint"></span>
+    </div>
   </div>
 
   <div class="card">
     <h2 style="font-size:14px;margin:0 0 4px;color:#7ab8f5">Team members</h2>
-    <label>Team members (one per line: name or username)</label>
-    <textarea id="teamMembers" placeholder="fred.luddy&#10;itil.user"></textarea>
-    <div class="hint">Used as the assignee filter for pulls. Leave empty to disable assignee filtering.</div>
+    <label>Team members (one per line: Name | sys_id)</label>
+    <textarea id="teamMembers" placeholder="Fred Luddy | 5137153cc611227c0183faa138383172&#10;ITIL User | 62826bf03710200044e0bfc8bcbe5df1"></textarea>
+    <div class="hint">Used as the assignee filter for pulls — leave empty to disable assignee filtering. Accepts user_name or full display name for Resolve.</div>
+    <div class="btns">
+      <button id="resolveMembersBtn">Resolve missing sys_ids</button>
+      <span id="membersStatus" class="hint"></span>
+    </div>
   </div>
 
   <div class="card">

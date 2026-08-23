@@ -17,13 +17,14 @@ Excel (.xlsx) analysis workbook.
 | Path | Role |
 |---|---|
 | `manifest.json` | MV3 config: side panel, content script on `*.service-now.com`, permissions (`storage`, `unlimitedStorage`, `downloads`, `sidePanel`, `cookies`, `scripting`) |
-| `background.js` | Orchestrator (service worker). Message handlers: `PING`, `CHOICES`, `MY_GROUPS`, `MEMBERS`, `USERS`, `COUNT`, `RUN`. Owns `smartFetch` auth transport, current-user + group resolution, pipeline stages, row merging into `lastData`. RUN accepts `filterSets[]`: each set is a fully server-side encoded query (table + state + priority + assignee + closed-dates + queue scope); sets MAY mix ticket types — records are grouped per table and unioned by sys_id, then per-table audit passes (fetchAudit is table-scoped) feed analyzeAll with that table's stateMap; one runs[] entry per set |
-| `panel/panel.html|css|js` | Side panel UI. Ticket-type dropdown + ServiceNow-style condition builder (`condRows`: column + operator + value rows joined by AND/OR; fields: assigned_to/state/priority/incident_state/group/ci/short_description/number/created/closed/resolved; ref columns offer is-empty/is-not-empty only — no value resolution needed; state/priority dropdowns were removed in favor of conditions), filter-list card, progress bar, log (click header for centered popup with Copy all). Queue scope + team members are NOT on the panel anymore — they come from `pluginSettings.defaults.{queues[],teamMembers[]}` (options page); panel resolves member names→sys_ids via USERS at connect and re-applies settings live via storage.onChanged. Builds encoded query via `lib/querybuilder.js`. Run = pull only; viewer tab is NOT auto-opened — user clicks "Open data view". Gear button opens the options page |
-| `settings/settings.html|js` | Options page (`chrome.runtime.openOptionsPage`). Edits `chrome.storage.local.pluginSettings`: `{version, instanceUrl, defaults:{ticketType, queues[], teamMembers[]}, params:{auditBatchSize, tablePageSize}}`. Legacy single `queueName` migrates into `queues[]` on load; old localStorage `snGroup` is a last-resort fallback in the panel. No JSON export/import — storage only. Background applies params in makeClient |
+| `background.js` | Orchestrator (service worker). Message handlers: `PING`, `COUNT`, `RUN`, `RESOLVE_IDS` — all automatic metadata lookups removed. Scope comes from `msg.groups[]` = `{name, sysId}` pairs hardcoded in settings (NO `resolveGroups`/`fetchMemberMap` during pulls); state labels for the timeline engine come from vendored `lib/statechoices.js` OOB maps (NO live `sys_choice` fetch); ackn membership check uses the flat configured team-member sys_id set applied to EVERY selected queue (`membersByQueue[g.sysId] = teamIds`). `RESOLVE_IDS {kind:"groups"|"users", names[], instanceUrl}` is the ONE explicit metadata call: settings-page button resolves missing `Name | sys_id` entries via `sys_user_group`/`sys_user`; never call it automatically. RUN accepts `filterSets[]`: each set is a fully server-side encoded query (table + conditions + assignee + queue scope); sets MAY mix ticket types — records are grouped per table and unioned by sys_id, then per-table audit passes (fetchAudit is table-scoped) feed analyzeAll; one runs[] entry per set |
+| `panel/panel.html|css|js` | Side panel UI. Ticket-type dropdown + ServiceNow-style condition builder (`condRows`: column + operator + value rows joined by AND/OR; fields: assigned_to/state/priority/incident_state/group/ci/short_description/number/created/closed/resolved; ref columns offer is-empty/is-not-empty only — no value resolution needed; state/priority dropdowns were removed in favor of conditions; choice dropdowns come from `lib/statechoices.js` OOB maps, NO server CHOICES fetch), filter-list card, progress bar, log (click header for centered popup with Copy all). Queue scope + team members come from `pluginSettings.defaults.{queues[],teamMembers[]}` as `{name, sysId}` pairs (options page); Connect is LOCAL-ONLY validation (https URL + queue sys_ids present) and makes ZERO server calls. Builds encoded query via `lib/querybuilder.js`. Run = pull only; viewer tab is NOT auto-opened — user clicks "Open data view". Gear button opens the options page |
+| `settings/settings.html|js` | Options page (`chrome.runtime.openOptionsPage`). Edits `chrome.storage.local.pluginSettings`: `{version:2, instanceUrl, defaults:{ticketType, queues:[{name,sysId}], teamMembers:[{name,sysId}]}, params:{auditBatchSize, tablePageSize}}`. Queues/members are one per line `Name | sys_id` (also accepts `Name=sys_id`; bare name migrates with empty sys_id and is skipped by queries until fixed). "Resolve missing sys_ids" buttons call the instance (see RESOLVE_IDS) and fill ONLY empty entries — existing ids are never overwritten. Legacy string-array entries migrate to pairs on load. No JSON export/import — storage only. Background applies params in makeClient |
 | `viewer/viewer.html|js` | Full-tab table view of the combined pulled dataset (`chrome.storage.local.lastData`): search, column sort, live DATA_UPDATED refresh, spreadsheet-style inline cell editing (double-click; Enter/Tab navigation; debounced write-back to lastData + DATA_UPDATED broadcast), and the Excel export button. Export FILLS the user's own formatted workbook via ZIP-LEVEL SURGERY with vendored fflate (`lib/vendor/fflate.min.js`, global `fflate`): unzip template, map sheet name→path through `xl/workbook.xml` + `xl/_rels/workbook.xml.rels` (name matched case-insensitively, `_`/space interchangeable), rewrite ONLY that sheet's XML — rows before the auto-detected header row (found by "reference" text in column E, resolving `t="s"` sharedStrings) kept verbatim, rows ≥ header+1 dropped and replaced by generated `t="inlineStr"` cells per fixed column map (E number … P resumeTime; timeline columns via fmtInstant instance-clock offset) that inherit the template's per-column `s=` style harvested from its first data rows (borders/number formats), `<dimension>` updated — every other zip entry re-emitted byte-identical. Sheet lookup normalizes names (`_`/space/case-insensitive, exact then loose) via workbook.xml rels and NEVER silently falls back to another sheet (a wrong-sheet fill once emptied the user's report). If formula rows get deleted, strip `xl/calcChain.xml` (+ its Content_Types Override + workbook rel) and set `fullCalcOnLoad="1"` on `<calcPr>` or Excel raises its repair dialog on stale chain refs. NEVER regenerate the workbook with a spreadsheet library (ExcelJS/SheetJS re-serialization corrupts formatted templates → Excel "repair" prompt). Template cached base64 in `chrome.storage.local.snXlsxTemplate` (click the toolbar label to clear/re-pick) |
 | `analysis/workbook.js` | Pure `buildWorkbook(rows, groupName)` → SheetJS workbook with Tickets (22 standard + timeline columns) + Summary sheets. Used by the viewer page |
 | `content/content.js` | Content script injected into ServiceNow tabs. Relays same-origin `fetch` requests (message type `SN_FETCH`) with `X-UserToken` header |
-| `lib/servicenow.js` | `ServiceNowClient`: Table API pagination, count via `x-total-count`, choice lists, group/member resolution (`fetchMemberMap` single `groupIN` query), user resolution (`fetchUsersByIds`, `resolveUserNames`), batched `sys_audit` queries. Pluggable `transport` + `onDiagnostic` hooks; `#request` emits one diagnostic per attempt: `kind:"ok"` (with ms/via/token-source/truncated query) on 2xx, `kind:"warn"` on retryable network/429/5xx with attempt number, `kind:"err"` before throwing |
+| `lib/servicenow.js` | `ServiceNowClient`: Table API pagination, count via `x-total-count`, batched `sys_audit` queries. Pluggable `transport` + `onDiagnostic` hooks; `#request` emits one diagnostic per attempt: `kind:"ok"` (with ms/via/token-source/truncated query) on 2xx, `kind:"warn"` on retryable network/429/5xx with attempt number, `kind:"err"` before throwing. Legacy resolver methods (`resolveGroups`, `fetchMemberMap`, `fetchUsersByIds`, `resolveUserNames`, `fetchUserGroups`, `findUserIdByUsername`, `fetchChoices`, `fetchStateMap`) are retained but UNUSED by the default flow — the plugin no longer reads `sys_choice`/`sys_user_group`/`sys_user_grmember`/`sys_user` |
+| `lib/statechoices.js` | Hardcoded out-of-box state maps per ticket table (`snStateMap(table)` value→label, task-family fallback) + priority choices (`SN_PRIORITY_CHOICES`) + list form (`snStateChoices`). Used by panel condition dropdowns AND the background timeline engine instead of live `sys_choice` fetches. If an instance customized state labels, these OOB maps must be updated or On Hold detection misfires |
 | `lib/querybuilder.js` | Pure function `buildEncodedQuery(filters)` → ServiceNow encoded query string; also `encodeConditions(conds)` for the panel's AND/OR condition builder (`assigned_toISEMPTY^ORstate=2^...`, date ops via `gs.dateGenerate`). Conditions fragment MUST be emitted FIRST: SN evaluates encoded queries strictly left-to-right, so a `^OR` placed after other ANDed scopes would OR over the whole preceding expression and leak past queue/member scoping |
 | `analysis/phase2.js` | Pure functions `extractTimelines(auditRows, ctx)` and `analyzeAll(...)` implementing the four timestamp rules |
 | `lib/xlsx.full.min.js` | Vendored SheetJS. Do not edit |
@@ -45,11 +46,20 @@ Why this shape (hard-won):
 - ServiceNow rejects session-authenticated API calls missing `X-UserToken` with 401.
 - Users must refresh their ServiceNow tab after reloading the extension, or the content script won't exist yet.
 
-### Current-user identity (`getCurrentUserId` in background.js)
-Resolution order: MAIN-world injection reading `g_user.userID` (fallback `NOW.user_id`)
-→ decode `glide_returning_auth_user` cookie (base64 `user|timestamp|sig`) →
-`findUserIdByUsername`. Group memberships come from `sys_user_grmember`
-(`fetchUserGroups`). The panel shows these as a dropdown; manual entry stays as fallback.
+### No-permission design (hardcoded scope)
+The default flow makes ZERO metadata lookups: no `sys_choice`, `sys_user_group`,
+`sys_user_grmember`, or `sys_user` reads. Some users lack permission for those
+tables, so all scoping data is hardcoded in settings instead:
+- Queues and team members = `{name, sysId}` pairs in `pluginSettings.defaults`
+  (`Name | sys_id` lines in the options page).
+- State/priority labels for condition dropdowns AND timeline rules come from
+  `lib/statechoices.js` OOB maps.
+Only the selected ticket table + `sys_audit` are ever queried during pulls.
+Panel Connect is local-only validation; COUNT/RUN are the sole server operations.
+The ONE exception is the explicit settings-page "Resolve missing sys_ids"
+button (`RESOLVE_IDS` → `sys_user_group`/`sys_user` by name, case-insensitive);
+it fills ONLY entries with an empty sys_id and never runs automatically — users
+without read access simply keep typing sys_ids by hand.
 
 ### The four timeline rules (business requirements — never change semantics without asking)
 Computed in `extractTimelines()` from `sys_audit` rows (`assignment_group`,
@@ -59,17 +69,15 @@ Computed in `extractTimelines()` from `sys_audit` rows (`assignment_group`,
    Born-in-queue fallback: if NO group-change events exist but the ticket's
    CURRENT group == queue, assignTime = opened_at (covers auto-routed tickets
    whose group was set at creation; inserts produce no audit rows).
-   Multi-queue mode: panel shows a slushbucket (ServiceNow column-picker style)
-   with ALL of the user's groups included by default; add/remove via buttons or
-   double-click, manual comma-separated input for non-member queues. Each ticket
-   is measured against ITS OWN current group (ctx.queueSysId = snapshotGroupId),
-   and ackn checks membership of that specific queue's member set. Member sets
-   come from one `groupIN` sys_user_grmember query (fetchMemberMap), not per-queue.
+   Each ticket is measured against ITS OWN current group
+   (ctx.queueSysId = snapshotGroupId), and ackn checks membership of that
+   queue's member set. Member sets are the flat configured team-member sys_id
+   list from settings applied to EVERY selected queue.
 2. **acknTime** — LAST time `assigned_to` became a member of the queue's team,
    counted ONLY if it occurs at/after the latest queue-entry event. Earlier
    assignments are ignored by design.
 3. **suspendTime** — FIRST transition INTO "On Hold" while current group == queue.
-   State labels come from the instance's own `sys_choice` list (fetched live).
+   State labels come from the hardcoded `lib/statechoices.js` OOB maps.
 4. **resumeTime** — FIRST post-suspend transition to "In Progress"; if none, fall
    back to first post-suspend "Resolved". Null if never resumed.
 

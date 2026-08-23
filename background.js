@@ -1,6 +1,7 @@
 importScripts(
   "lib/servicenow.js",
   "lib/querybuilder.js",
+  "lib/statechoices.js",
   "analysis/phase2.js"
 );
 
@@ -72,80 +73,6 @@ async function getPageToken(tabId) {
   } catch {
     return null;
   }
-}
-
-async function getCurrentUserId(instanceUrl) {
-  const origin = new URL(instanceUrl).origin;
-  const tab = await findServiceNowTab(origin);
-  if (tab?.id !== undefined) {
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: "MAIN",
-        func: () => {
-          try {
-            if (typeof g_user !== "undefined" && g_user?.userID) return g_user.userID;
-          } catch {}
-          try {
-            if (window.NOW?.user_id) return window.NOW.user_id;
-          } catch {}
-          return null;
-        }
-      });
-      const id = results?.[0]?.result;
-      if (id) return { userId: id, via: "page" };
-    } catch {}
-  }
-
-  const rawCookie = await new Promise(resolve => {
-    try {
-      chrome.cookies.get({ url: origin, name: "glide_returning_auth_user" }, c => resolve(c?.value || null));
-    } catch {
-      resolve(null);
-    }
-  });
-  if (rawCookie) {
-    try {
-      const b64 = rawCookie.includes(":") ? rawCookie.split(":").pop() : rawCookie;
-      const userName = atob(b64).split("|")[0];
-      if (userName && /^[a-zA-Z0-9._@-]+$/.test(userName)) {
-        const client = await makeClient(instanceUrl);
-        const userId = await client.findUserIdByUsername(userName);
-        return { userId, via: `cookie:${userName}` };
-      }
-    } catch {}
-  }
-  throw new Error(
-    "Could not identify the logged-in user. Open a classic ServiceNow page (e.g. an incident list) in the tab and try again."
-  );
-}
-
-async function handleMyGroups(msg) {
-  const { userId, via } = await getCurrentUserId(msg.instanceUrl);
-  const client = await makeClient(msg.instanceUrl);
-  const groups = await client.fetchUserGroups(userId);
-  if (!groups.length) {
-    throw new Error("Your user is not a member of any assignment group — enter one manually");
-  }
-  return { ok: true, groups, via };
-}
-
-async function handleMembers(msg) {
-  const client = await makeClient(msg.instanceUrl);
-  const names = Array.isArray(msg.groupNames) ? msg.groupNames : [];
-  if (!names.length) return { ok: true, members: [] };
-  const groups = await client.resolveGroups(names);
-  const map = await client.fetchMemberMap(groups.map(g => g.sys_id));
-  const ids = [...new Set(Object.values(map).flat())];
-  const members = await client.fetchUsersByIds(ids);
-  members.sort((a, b) => a.name.localeCompare(b.name));
-  return { ok: true, members };
-}
-
-async function handleResolveUsers(msg) {
-  const client = await makeClient(msg.instanceUrl);
-  const users = await client.resolveUserNames(msg.names || []);
-  return { ok: true, users };
 }
 
 async function smartFetch(url, opts = {}) {
@@ -243,22 +170,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true, running });
     return false;
   }
-  if (msg.type === "CHOICES") {
-    handleChoices(msg).then(sendResponse).catch(err => { diagError("CHOICES", err); sendResponse({ ok: false, error: err.message }); });
-    return true;
-  }
-  if (msg.type === "MY_GROUPS") {
-    handleMyGroups(msg).then(sendResponse).catch(err => { diagError("MY_GROUPS", err); sendResponse({ ok: false, error: err.message }); });
-    return true;
-  }
-  if (msg.type === "MEMBERS") {
-    handleMembers(msg).then(sendResponse).catch(err => { diagError("MEMBERS", err); sendResponse({ ok: false, error: err.message }); });
-    return true;
-  }
-  if (msg.type === "USERS") {
-    handleResolveUsers(msg).then(sendResponse).catch(err => { diagError("USERS", err); sendResponse({ ok: false, error: err.message }); });
-    return true;
-  }
   if (msg.type === "COUNT") {
     handleCount(msg).then(sendResponse).catch(err => { diagError("COUNT", err); sendResponse({ ok: false, error: err.message }); });
     return true;
@@ -268,50 +179,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true, started: true });
     return true;
   }
+  if (msg.type === "RESOLVE_IDS") {
+    handleResolveIds(msg).then(sendResponse).catch(err => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
   return false;
 });
 
-async function resolveQueryScope(client, msg) {
-  const names = Array.isArray(msg.groupNames) && msg.groupNames.length
-    ? msg.groupNames
-    : [msg.groupName].filter(Boolean);
-  const groups = await client.resolveGroups(names);
-  const membersByQueue = await client.fetchMemberMap(groups.map(g => g.sys_id));
-  const members = [...new Set(Object.values(membersByQueue).flat())];
-  const encodedQuery = buildEncodedQuery({
-    ...msg.filters,
-    ...(groups.length === 1
-      ? { groupSysId: groups[0].sys_id }
-      : { groupSysIds: groups.map(g => g.sys_id) })
-  });
-  return { groups, membersByQueue, members, encodedQuery };
+async function handleResolveIds(msg) {
+  const instanceUrl = String(msg.instanceUrl || "").trim();
+  if (!/^https:\/\//i.test(instanceUrl)) throw new Error("Enter a valid https:// instance URL first");
+  const names = (Array.isArray(msg.names) ? msg.names : []).map(n => String(n || "").trim()).filter(Boolean);
+  if (!names.length) return { ok: true, resolved: [] };
+  const client = await makeClient(instanceUrl);
+  let resolved;
+  if (msg.kind === "groups") {
+    resolved = (await client.resolveGroups(names)).map(g => ({ name: g.name, sysId: g.sys_id }));
+  } else if (msg.kind === "users") {
+    resolved = await client.resolveUserNames(names);
+  } else {
+    throw new Error(`Unknown resolve kind: ${msg.kind}`);
+  }
+  return { ok: true, resolved };
 }
 
-async function handleChoices(msg) {
-  const table = msg.table || "incident";
-  const client = await makeClient(msg.instanceUrl);
-  const safe = p => p.catch(() => []);
-  const withTaskFallback = async (element) => {
-    let vals = await safe(client.fetchChoices(table, element));
-    if (!vals.length && table !== "task") {
-      vals = await safe(client.fetchChoices("task", element));
-    }
-    return vals;
-  };
-  const [states, priorities, incidentStates] = await Promise.all([
-    withTaskFallback("state"),
-    withTaskFallback("priority"),
-    table === "incident"
-      ? safe(client.fetchChoices(table, "incident_state"))
-      : Promise.resolve([])
-  ]);
-  return { ok: true, states, priorities, incidentStates };
+function scopeGroups(msg) {
+  const groups = (Array.isArray(msg.groups) ? msg.groups : [])
+    .filter(g => g && g.name && g.sysId);
+  if (!groups.length) {
+    throw new Error("No queues configured with a sys_id — open Settings and add each queue as \"Name | sys_id\"");
+  }
+  return groups;
+}
+
+function groupScopeOf(groups) {
+  return groups.length === 1
+    ? { groupSysId: groups[0].sysId }
+    : { groupSysIds: groups.map(g => g.sysId) };
 }
 
 async function handleCount(msg) {
   const table = msg.filters?.table || "incident";
   const client = await makeClient(msg.instanceUrl);
-  const { encodedQuery } = await resolveQueryScope(client, msg);
+  const groups = scopeGroups(msg);
+  const encodedQuery = buildEncodedQuery({ ...msg.filters, ...groupScopeOf(groups) });
   const total = await client.count(table, encodedQuery);
   return { ok: true, total, encodedQuery };
 }
@@ -330,16 +241,12 @@ async function runPull(msg) {
       : [msg.filters || {}];
     const client = await makeClient(msg.instanceUrl);
 
-    const names = Array.isArray(msg.groupNames) && msg.groupNames.length
-      ? msg.groupNames
-      : [msg.groupName].filter(Boolean);
-    progress("resolve", `Resolving group(s): ${names.join(", ")}...`);
-    const { groups, membersByQueue, members } = await resolveQueryScope(client, msg);
-    progress("resolve", `Groups found: ${groups.map(g => `${g.name} (${(membersByQueue[g.sys_id] || []).length} members)`).join(", ")}`);
+    const groups = scopeGroups(msg);
+    progress("resolve", `Queues (from settings): ${groups.map(g => g.name).join(", ")}`);
+    const groupScope = groupScopeOf(groups);
 
-    const groupScope = groups.length === 1
-      ? { groupSysId: groups[0].sys_id }
-      : { groupSysIds: groups.map(g => g.sys_id) };
+    const teamIds = [...new Set(sets.flatMap(s => Array.isArray(s.memberSysIds) ? s.memberSysIds : []))];
+    const membersByQueue = Object.fromEntries(groups.map(g => [g.sysId, teamIds]));
 
     const byTable = new Map();
     const runEntries = [];
@@ -402,8 +309,7 @@ async function runPull(msg) {
       }
 
       progress("analyze", `Applying timeline rules (${tLabel})...`);
-      const stateMap = await client.fetchStateMap(table);
-      const { rows, missingAudit } = analyzeAll(records, auditByTicket, stateMap, { membersByQueue, fallbackMembers: members });
+      const { rows, missingAudit } = analyzeAll(records, auditByTicket, snStateMap(table), { membersByQueue, fallbackMembers: teamIds });
       allRows.push(...rows);
       missingAuditTotal += missingAudit;
     }
