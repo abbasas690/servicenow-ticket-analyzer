@@ -4,6 +4,10 @@ function parseUtc(s) {
   return Date.parse(/(Z|[+-]\d\d:?\d\d)$/.test(str) ? str : str + "Z");
 }
 
+function nameKey(v) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
 function extractTimelines(auditRows, ctx) {
   const events = (auditRows || [])
     .map(r => ({
@@ -25,24 +29,26 @@ function extractTimelines(auditRows, ctx) {
     lastQueueEntryAt: null
   };
 
+  const memberSet = new Set((ctx.memberNames || []).map(nameKey));
+  const inQueue = g => g != null && nameKey(g) === nameKey(ctx.queueName);
+
   let currentGroup = null;
   const hasGroupEvent = events.some(e => e.field === "assignment_group");
-  if (!hasGroupEvent && ctx.snapshotGroupId && ctx.snapshotGroupId === ctx.queueSysId) {
+  if (!hasGroupEvent && inQueue(ctx.snapshotGroupName)) {
     const bornAt = parseUtc(ctx.openedAt);
     if (Number.isFinite(bornAt)) {
       result.assignTime = new Date(bornAt).toISOString();
       result.lastQueueEntryAt = bornAt;
-      currentGroup = ctx.queueSysId;
+      currentGroup = ctx.snapshotGroupName;
     }
   }
 
   for (const e of events) {
     if (e.field === "assignment_group") {
-      const enteringQueue = e.newValue === ctx.queueSysId;
-      if (enteringQueue) {
+      if (inQueue(e.newValue)) {
         result.assignTime = new Date(e.at).toISOString();
         result.lastQueueEntryAt = e.at;
-        currentGroup = ctx.queueSysId;
+        currentGroup = e.newValue;
       } else {
         currentGroup = e.newValue;
       }
@@ -50,13 +56,13 @@ function extractTimelines(auditRows, ctx) {
     }
 
     if (e.field === "assigned_to" && result.lastQueueEntryAt !== null) {
-      if (ctx.memberIds.includes(e.newValue) && e.at >= result.lastQueueEntryAt) {
+      if (memberSet.has(nameKey(e.newValue)) && e.at >= result.lastQueueEntryAt) {
         result.acknTime = new Date(e.at).toISOString();
       }
       continue;
     }
 
-    if (e.field === "state" && currentGroup === ctx.queueSysId) {
+    if (e.field === "state" && inQueue(currentGroup)) {
       const toLabel = ctx.stateMap[e.newValue] || "";
       const fromLabel = ctx.stateMap[e.oldValue] || "";
       const isOnHold = toLabel.toLowerCase() === "on hold";
@@ -105,19 +111,13 @@ function rawValue(v) {
   return v.value || "";
 }
 
-function analyzeAll(records, auditByTicket, stateMap, queueCtx, legacyMemberIds) {
-  let membersByQueue, fallbackMembers;
-  if (queueCtx && typeof queueCtx === "object" && !Array.isArray(queueCtx)) {
-    membersByQueue = queueCtx.membersByQueue || {};
-    fallbackMembers = queueCtx.fallbackMembers || [];
-  } else {
-    membersByQueue = { [queueCtx || ""]: legacyMemberIds || [] };
-    fallbackMembers = legacyMemberIds || [];
-  }
+function analyzeAll(records, auditByTicket, stateMap, queueCtx) {
+  const membersByQueue = (queueCtx && queueCtx.membersByQueue) || {};
+  const fallbackMembers = (queueCtx && queueCtx.fallbackMembers) || [];
   const out = [];
   let missingAudit = 0;
   for (const rec of records) {
-    const snapshotGroupId = rawValue(rec.assignment_group);
+    const snapshotGroupName = fieldValue(rec.assignment_group);
     const sysId = typeof rec.sys_id === "object"
       ? (rec.sys_id.value || rec.sys_id.display_value)
       : rec.sys_id;
@@ -125,9 +125,9 @@ function analyzeAll(records, auditByTicket, stateMap, queueCtx, legacyMemberIds)
     if (!rows) missingAudit++;
     const t = extractTimelines(rows, {
       stateMap,
-      queueSysId: snapshotGroupId,
-      memberIds: membersByQueue[snapshotGroupId] || fallbackMembers,
-      snapshotGroupId,
+      queueName: nameKey(snapshotGroupName),
+      memberNames: membersByQueue[nameKey(snapshotGroupName)] || fallbackMembers,
+      snapshotGroupName,
       openedAt: rawValue(rec.opened_at)
     });
     out.push({
@@ -164,8 +164,6 @@ function analyzeAll(records, auditByTicket, stateMap, queueCtx, legacyMemberIds)
   }
   return { rows: out, missingAudit };
 }
-
-const SYS_ID_RE = /^[0-9a-f]{32}$/i;
 
 const ACTIVITY_ANCHORS = [
   { field: "assignment_group", labels: ["assignment group"] },
@@ -301,29 +299,8 @@ function extractEventsFromListHistory(payload) {
   return byTicket;
 }
 
-function normalizeAuditRefs(byTicket, refPairs) {
-  const map = new Map();
-  for (const p of refPairs || []) {
-    if (p && p.name && p.sysId) map.set(String(p.name).trim().toLowerCase(), String(p.sysId).trim());
-  }
-  const norm = v => {
-    const s = v === null || v === undefined ? "" : String(v?.value ?? v).trim();
-    if (!s || SYS_ID_RE.test(s)) return s;
-    return map.get(s.toLowerCase()) || s;
-  };
-  for (const events of Object.values(byTicket || {})) {
-    for (const e of events) {
-      if (e.field === "assignment_group" || e.field === "assigned_to") {
-        e.oldValue = norm(e.oldValue);
-        e.newValue = norm(e.newValue);
-      }
-    }
-  }
-  return byTicket;
-}
-
 const G = typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : null;
-if (G) G.Analysis = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity, extractEventsFromListHistory };
+if (G) G.Analysis = { extractTimelines, analyzeAll, extractEventsFromActivity, extractEventsFromListHistory };
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { extractTimelines, analyzeAll, normalizeAuditRefs, extractEventsFromActivity, extractEventsFromListHistory };
+  module.exports = { extractTimelines, analyzeAll, extractEventsFromActivity, extractEventsFromListHistory };
 }

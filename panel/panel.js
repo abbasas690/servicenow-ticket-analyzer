@@ -395,8 +395,6 @@ function requireInstance() {
 }
 
 function currentFilters() {
-  const missing = cfgMembers.filter(m => !m.sysId).map(m => m.name);
-  if (missing.length) log(`Team members without sys_id are skipped (acknowledgement detection): ${missing.join(", ")}`, "error");
   return {
     table: els.ticketType.value,
     conditions: collectConditions(),
@@ -405,9 +403,7 @@ function currentFilters() {
 }
 
 function configuredGroups() {
-  if (!cfgQueues.length) throw new Error("No queues configured — open Settings and add assignment groups as \"Name | sys_id\"");
-  const missing = cfgQueues.filter(q => !q.sysId);
-  if (missing.length) throw new Error(`Queues without sys_id (open Settings to fix): ${missing.map(q => q.name).join(", ")}`);
+  if (!cfgQueues.length) throw new Error("No queues configured — open Settings and add assignment group names, one per line");
   return cfgQueues;
 }
 
@@ -484,12 +480,10 @@ async function connect() {
     els.connState.textContent = "Checking…";
     els.connState.classList.remove("on");
     const groups = configuredGroups();
-    const members = cfgMembers.filter(m => m.sysId);
     els.connState.textContent = `Ready · ${groups.length} queue${groups.length > 1 ? "s" : ""}`;
     els.connState.classList.add("on");
     log(
-      `Ready (no setup server calls): ${groups.length} queue(s), ${members.length} team member(s) from settings` +
-      (cfgMembers.length > members.length ? ` · ${cfgMembers.length - members.length} member(s) missing sys_id` : ""),
+      `Ready (no setup server calls): ${groups.length} queue(s), ${cfgMembers.length} team member(s) from settings`,
       "success"
     );
     savePrefs();

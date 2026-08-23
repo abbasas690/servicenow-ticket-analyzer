@@ -189,43 +189,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true, started: true });
     return true;
   }
-  if (msg.type === "RESOLVE_IDS") {
-    handleResolveIds(msg).then(sendResponse).catch(err => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
   return false;
 });
 
-async function handleResolveIds(msg) {
-  const instanceUrl = String(msg.instanceUrl || "").trim();
-  if (!/^https:\/\//i.test(instanceUrl)) throw new Error("Enter a valid https:// instance URL first");
-  const names = (Array.isArray(msg.names) ? msg.names : []).map(n => String(n || "").trim()).filter(Boolean);
-  if (!names.length) return { ok: true, resolved: [] };
-  const client = await makeClient(instanceUrl);
-  let resolved;
-  if (msg.kind === "groups") {
-    resolved = (await client.resolveGroups(names)).map(g => ({ name: g.name, sysId: g.sys_id }));
-  } else if (msg.kind === "users") {
-    resolved = await client.resolveUserNames(names);
-  } else {
-    throw new Error(`Unknown resolve kind: ${msg.kind}`);
-  }
-  return { ok: true, resolved };
-}
-
 function scopeGroups(msg) {
   const groups = (Array.isArray(msg.groups) ? msg.groups : [])
-    .filter(g => g && g.name && g.sysId);
-  if (!groups.length) {
-    throw new Error("No queues configured with a sys_id — open Settings and add each queue as \"Name | sys_id\"");
+    .map(g => (typeof g === "string" ? g : g?.name))
+    .map(n => String(n || "").trim())
+    .filter(Boolean);
+  const unique = [...new Set(groups)];
+  if (!unique.length) {
+    throw new Error("No queues configured — open Settings and add assignment group names, one per line");
   }
-  return groups;
+  return unique;
 }
 
-function groupScopeOf(groups) {
-  return groups.length === 1
-    ? { groupSysId: groups[0].sysId }
-    : { groupSysIds: groups.map(g => g.sysId) };
+function groupScopeOf(groupNames) {
+  return { groupNames };
 }
 
 async function handleCount(msg) {
@@ -253,21 +233,22 @@ async function runPull(msg) {
     const client = await makeClient(msg.instanceUrl);
 
     const groups = scopeGroups(msg);
-    progress("resolve", `Queues (from settings): ${groups.map(g => g.name).join(", ")}`);
+    progress("resolve", `Queues (from settings): ${groups.join(", ")}`);
     const groupScope = groupScopeOf(groups);
 
     const settings = (await chrome.storage.local.get(["pluginSettings"])).pluginSettings;
-    const teamIds = [...new Set(
+    const teamNames = [...new Set(
       ((settings?.defaults?.teamMembers || []))
-        .map(m => (m && typeof m === "object" ? m.sysId : ""))
+        .map(m => (m && typeof m === "object" ? m.name : m))
+        .map(n => String(n || "").trim())
         .filter(Boolean)
     )];
-    if (!teamIds.length) {
-      progress("resolve", "No team members with sys_id — acknowledgement dates will stay empty");
+    if (!teamNames.length) {
+      progress("resolve", "No team members configured — acknowledgement dates will stay empty");
     } else {
-      progress("resolve", `${teamIds.length} team member(s) configured for acknowledgement detection`);
+      progress("resolve", `${teamNames.length} team member(s) configured for acknowledgement detection`);
     }
-    const membersByQueue = Object.fromEntries(groups.map(g => [g.sysId, teamIds]));
+    const membersByQueue = Object.fromEntries(groups.map(g => [g, teamNames]));
 
     const byTable = new Map();
     const runEntries = [];
@@ -323,11 +304,6 @@ async function runPull(msg) {
         abort.signal,
         table
       );
-      Analysis.normalizeAuditRefs(eventsByTicket, [
-        ...(settings?.defaults?.queues || []),
-        ...(settings?.defaults?.teamMembers || []),
-        ...groups
-      ]);
       auditCounts[table] = Object.keys(eventsByTicket).length;
       if (!sampleRecord) sampleRecord = records[0];
       if (!sampleAuditRows.length) {
@@ -336,7 +312,7 @@ async function runPull(msg) {
       }
 
       progress("analyze", `Applying timeline rules (${tLabel})...`);
-      const { rows, missingAudit } = analyzeAll(records, eventsByTicket, snStateMap(table), { membersByQueue, fallbackMembers: teamIds });
+      const { rows, missingAudit } = analyzeAll(records, eventsByTicket, snStateMap(table), { membersByQueue, fallbackMembers: teamNames });
       allRows.push(...rows);
       missingAuditTotal += missingAudit;
     }

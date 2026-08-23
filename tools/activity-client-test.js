@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { ServiceNowClient } = require("../lib/servicenow.js");
-const { normalizeAuditRefs } = require("../analysis/phase2.js");
+globalThis.Analysis = require("../analysis/phase2.js");
 
 let failed = 0;
 function check(name, cond) {
@@ -86,24 +86,6 @@ const lhPayload = id => JSON.stringify({
   c = mkClient(t);
   got = await c.fetchTimelineEvents([], FIELDS);
   check("no requests for empty input", t.calls.length === 0 && Object.keys(got).length === 0);
-
-  console.log("== normalizeAuditRefs ==");
-  const pairs = [
-    { name: "SN QA Queue Alpha", sysId: "Q1ID" },
-    { name: "Abel Tuter", sysId: "MEM1" }
-  ];
-  const data = {
-    T1: [
-      { field: "assignment_group", oldValue: "", newValue: "SN QA Queue Alpha" },
-      { field: "assigned_to", oldValue: "abel tuter", newValue: "aa11bb22cc33dd44ee55ff6600112233" },
-      { field: "state", oldValue: "", newValue: "In Progress" }
-    ]
-  };
-  normalizeAuditRefs(data, pairs);
-  check("queue name mapped to sys_id", data.T1[0].newValue === "Q1ID");
-  check("member name mapped case-insensitively", data.T1[1].oldValue === "MEM1");
-  check("32-hex ids untouched", data.T1[1].newValue === "aa11bb22cc33dd44ee55ff6600112233");
-  check("state field not rewritten", data.T1[2].newValue === "In Progress");
 
   console.log(`\nactivity-client: ${failed ? failed + " FAILED" : "all passed"}`);
   process.exit(failed ? 1 : 0);
