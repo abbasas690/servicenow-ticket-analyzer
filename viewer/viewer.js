@@ -636,6 +636,28 @@ $("search").addEventListener("input", render);
 let aiRunning = false;
 let aiActive = null;
 let aiStopped = false;
+let aiWarm = null;
+let aiWarmModel = "";
+let aiWarmTimer = null;
+
+function getAi(modelId) {
+  clearTimeout(aiWarmTimer);
+  if (!aiWarm || aiWarmModel !== modelId) {
+    aiWarm?.dispose();
+    aiWarm = AiClient.createAiClient();
+    aiWarmModel = modelId;
+  }
+  return aiWarm;
+}
+
+function scheduleAiIdleRelease() {
+  clearTimeout(aiWarmTimer);
+  aiWarmTimer = setTimeout(() => {
+    aiWarm?.dispose();
+    aiWarm = null;
+    aiWarmModel = "";
+  }, 120000);
+}
 
 function setAiChip(text) {
   $("aiChipText").textContent = text;
@@ -657,16 +679,16 @@ async function runAiExtract(rerun) {
   aiRunning = true;
   aiStopped = false;
   $("aiChip").classList.remove("hidden");
-  const ai = AiClient.createAiClient();
-  aiActive = ai;
   let done = 0;
-  let modelId = "";
   try {
     const { pluginSettings } = await chrome.storage.local.get("pluginSettings");
-    modelId = pluginSettings?.ai?.modelId;
+    const modelId = pluginSettings?.ai?.modelId;
     if (!modelId) throw new Error("No AI model selected — open Settings and download one");
+    const ai = getAi(modelId);
+    aiActive = ai;
     setAiChip("AI: loading model…");
-    await ai.ensure(modelId, p => setAiChip(`AI download: ${p.file} ${p.percent}%`));
+    const ready = await ai.ensure(modelId, p => setAiChip(`AI download: ${p.file} ${p.percent}%`));
+    setAiChip(`AI: ready (${(ready.device || "?").toUpperCase()})`);
     const aiLog = detail =>
       chrome.runtime.sendMessage({ type: "PROGRESS", stage: "diag", detail }).catch(() => {});
     const t0 = Date.now();
@@ -701,9 +723,9 @@ async function runAiExtract(rerun) {
       }).catch(() => {});
     }
   } finally {
-    ai.dispose();
     aiActive = null;
     aiRunning = false;
+    scheduleAiIdleRelease();
     $("aiChip").classList.add("hidden");
   }
 }
@@ -713,4 +735,6 @@ $("aiBtn").addEventListener("click", e => runAiExtract(e.shiftKey).catch(err => 
 $("aiStop").addEventListener("click", () => {
   aiStopped = true;
   aiActive?.stop("Stopped by user");
+  aiWarm = null;
+  aiWarmModel = "";
 });
