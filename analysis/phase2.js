@@ -165,7 +165,30 @@ function analyzeAll(records, auditByTicket, stateMap, queueCtx, legacyMemberIds)
   return { rows: out, missingAudit };
 }
 
-if (typeof self !== "undefined") self.Analysis = { extractTimelines, analyzeAll };
+const SYS_ID_RE = /^[0-9a-f]{32}$/i;
+
+function normalizeAuditRefs(byTicket, refPairs) {
+  const map = new Map();
+  for (const p of refPairs || []) {
+    if (p && p.name && p.sysId) map.set(String(p.name).trim().toLowerCase(), String(p.sysId).trim());
+  }
+  const norm = v => {
+    const s = v === null || v === undefined ? "" : String(v?.value ?? v).trim();
+    if (!s || SYS_ID_RE.test(s)) return s;
+    return map.get(s.toLowerCase()) || s;
+  };
+  for (const events of Object.values(byTicket || {})) {
+    for (const e of events) {
+      if (e.field === "assignment_group" || e.field === "assigned_to") {
+        e.oldValue = norm(e.oldValue);
+        e.newValue = norm(e.newValue);
+      }
+    }
+  }
+  return byTicket;
+}
+
+if (typeof self !== "undefined") self.Analysis = { extractTimelines, analyzeAll, normalizeAuditRefs };
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { extractTimelines, analyzeAll };
+  module.exports = { extractTimelines, analyzeAll, normalizeAuditRefs };
 }

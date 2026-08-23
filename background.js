@@ -326,6 +326,11 @@ async function runPull(msg) {
         abort.signal,
         table
       );
+      Analysis.normalizeAuditRefs(auditByTicket, [
+        ...(settings?.defaults?.queues || []),
+        ...(settings?.defaults?.teamMembers || []),
+        ...groups
+      ]);
       auditCounts[table] = Object.keys(auditByTicket).length;
       if (!sampleRecord) sampleRecord = records[0];
       if (!sampleAuditRows.length) {
