@@ -63,8 +63,9 @@ function extractTimelines(auditRows, ctx) {
     }
 
     if (e.field === "state" && inQueue(currentGroup)) {
-      const toLabel = ctx.stateMap[e.newValue] || "";
-      const fromLabel = ctx.stateMap[e.oldValue] || "";
+      const lbl = v => ctx.stateMap[String(v ?? "").trim()] || String(v ?? "").trim();
+      const toLabel = lbl(e.newValue);
+      const fromLabel = lbl(e.oldValue);
       const isOnHold = toLabel.toLowerCase() === "on hold";
       const wasOnHold = fromLabel.toLowerCase() === "on hold";
 

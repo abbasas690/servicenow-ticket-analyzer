@@ -98,5 +98,31 @@ check("never held -> resume stays null",
   ], { ...base, openedAt: "2026-08-23 06:06:20" }).resumeTime,
   null);
 
+console.log("== feed display-label state events (real list_history payload) ==");
+check("full lifecycle with label values: ackn+hold+resume",
+  (() => {
+    const t = extractTimelines([
+      ev("state", "", "New", "2026-08-23 06:07:38"),
+      ev("assigned_to", "", "ITIL User", "2026-08-23 06:07:44"),
+      ev("state", "New", "In Progress", "2026-08-23 06:07:44"),
+      ev("state", "In Progress", "On Hold", "2026-08-23 06:07:46"),
+      ev("state", "On Hold", "In Progress", "2026-08-23 06:07:50"),
+      ev("state", "In Progress", "Resolved", "2026-08-23 06:07:53"),
+      ev("state", "Resolved", "Closed", "2026-08-23 06:07:55")
+    ], { ...base, snapshotGroupName: "QA Queue Alpha", openedAt: "2026-08-23 06:07:38" });
+    return [t.assignTime, t.acknTime, t.suspendTime, t.resumeTime, t.resumeSource];
+  })(),
+  ["2026-08-23T06:07:38.000Z", "2026-08-23T06:07:44.000Z", "2026-08-23T06:07:46.000Z", "2026-08-23T06:07:50.000Z", "In Progress"]);
+check("label hold->resolved fallback still works",
+  (() => {
+    const t = extractTimelines([
+      ev("assignment_group", "Other Queue", "QA Queue Alpha", "2026-08-23 06:09:00"),
+      ev("state", "2", "3", "2026-08-23 06:09:05"),
+      ev("state", "On Hold", "Resolved", "2026-08-23 06:09:10")
+    ], { ...base, openedAt: "2026-08-23 06:09:00" });
+    return [t.suspendTime, t.resumeTime, t.resumeSource];
+  })(),
+  ["2026-08-23T06:09:05.000Z", "2026-08-23T06:09:10.000Z", "Resolved"]);
+
 console.log(`\nphase2: ${failed ? failed + " FAILED" : "all passed"}`);
 process.exit(failed ? 1 : 0);

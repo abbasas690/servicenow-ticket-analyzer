@@ -78,6 +78,9 @@ Computed in `extractTimelines()` from timeline events (`assignment_group`,
    assignments are ignored by design.
 3. **suspendTime** — FIRST transition INTO "On Hold" while current group == queue.
    State labels come from the hardcoded `lib/statechoices.js` OOB maps.
+   Feed events carry DISPLAY LABELS ("On Hold"), legacy sys_audit rows carried
+   raw values ("3") — both accepted: each value is resolved via stateMap key
+   lookup first, falling back to treating it as the label itself.
 4. **resumeTime** — FIRST post-suspend transition to "In Progress"; if none, fall
    back to first post-suspend "Resolved". Null if never resumed.
 
