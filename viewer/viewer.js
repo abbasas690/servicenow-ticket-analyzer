@@ -32,6 +32,7 @@ const COLUMNS = [
 ];
 
 let data = null;
+console.log("viewer build 2026-08-24-B (fixed cols + click-to-copy)");
 let sortKey = null;
 let sortDir = 1;
 
